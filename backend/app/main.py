@@ -38,4 +38,13 @@ def startup():
 
 @app.get("/api/v1/auth/health")
 def health():
-    return {"status": "ok", "version": "0.1.0"}
+    import socket
+    hostname = socket.gethostname()
+    # 判断环境：通过 hostname 或环境变量
+    env = os.getenv("APP_ENV", "development")
+    return {
+        "status": "ok",
+        "version": "0.1.0",
+        "environment": env,
+        "hostname": hostname,
+    }
