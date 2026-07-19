@@ -2,62 +2,128 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { questionApi } from '../../services/questions'
 import { useToastStore } from '../../stores/toastStore'
+import { compressImage } from '../../utils/image'
+import ImageViewer from '../../components/Shared/ImageViewer'
 
 const ERROR_TYPES = ['概念不清', '审题错误', '计算失误', '知识遗忘', '其他']
 const SUBJECTS = ['数学', '物理', '化学', '英语', '语文', '其他']
 
 type SolutionMode = 'text' | 'image'
 
+interface ImageItem {
+  id: number | null
+  file_path: string
+  blobUrl: string
+  progress: number
+}
+
+function createImageItem(file: File): ImageItem {
+  return { id: null, file_path: '', blobUrl: URL.createObjectURL(file), progress: 0 }
+}
+
 export default function QuestionNewPage() {
   const [form, setForm] = useState({
     question_content: '', subject: '', tags: '', error_type: '', difficulty: 3, source: '',
     correct_solution: '', user_analysis: '',
   })
-  const [questionImages, setQuestionImages] = useState<{ id: number; file_path: string }[]>([])
-  const [solutionImages, setSolutionImages] = useState<{ id: number; file_path: string }[]>([])
-  const [uploading, setUploading] = useState(false)
-  const [uploadingSolution, setUploadingSolution] = useState(false)
+  const [questionImages, setQuestionImages] = useState<ImageItem[]>([])
+  const [solutionImages, setSolutionImages] = useState<ImageItem[]>([])
   const [saving, setSaving] = useState(false)
   const [solutionMode, setSolutionMode] = useState<SolutionMode>('text')
+  const [viewerState, setViewerState] = useState<{ images: { src: string }[]; index: number } | null>(null)
   const questionInputRef = useRef<HTMLInputElement>(null)
   const solutionInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const addToast = useToastStore((s) => s.addToast)
 
+  const setProgress = (blobUrl: string, pct: number,
+    setItems: (updater: (prev: ImageItem[]) => ImageItem[]) => void,
+  ) => {
+    setItems((prev) => {
+      const next = [...prev]
+      const idx = next.findIndex((it) => it.blobUrl === blobUrl)
+      if (idx >= 0) next[idx] = { ...next[idx], progress: pct }
+      return next
+    })
+  }
+
+  const uploadFiles = async (files: FileList, type: 'question' | 'solution',
+    setItems: (updater: (prev: ImageItem[]) => ImageItem[]) => void,
+  ) => {
+    const newItems = Array.from(files).map(createImageItem)
+    setItems((prev) => [...prev, ...newItems])
+    try {
+      for (let i = 0; i < newItems.length; i++) {
+        const item = newItems[i]
+        // Show preparing feedback
+        setProgress(item.blobUrl, 5, setItems)
+
+        // Simulate progress during compression (5% → 40%)
+        const simTimer = setInterval(() => {
+          setItems((prev) => {
+            const next = [...prev]
+            const idx = next.findIndex((it) => it.blobUrl === item.blobUrl)
+            if (idx < 0) return prev
+            const cur = next[idx].progress
+            if (cur >= 40) { clearInterval(simTimer); return prev }
+            const inc = Math.random() * 3 + 1
+            next[idx] = { ...next[idx], progress: Math.min(cur + inc, 40) }
+            return next
+          })
+        }, 200)
+
+        const compressed = await compressImage(files[i])
+        clearInterval(simTimer)
+
+        // Upload: map real progress 0-100 → 40-95
+        const uploadFile = new File([compressed], files[i].name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' })
+        const { data } = await questionApi.uploadImage(uploadFile, type, (pct) => {
+          setItems((prev) => {
+            const next = [...prev]
+            const itemIdx = next.findIndex((it) => it.blobUrl === item.blobUrl)
+            if (itemIdx >= 0) next[itemIdx] = { ...next[itemIdx], progress: Math.min(40 + Math.round(pct * 0.55), 95) }
+            return next
+          })
+        })
+
+        setItems((prev) => {
+          const next = [...prev]
+          const itemIdx = next.findIndex((it) => it.blobUrl === item.blobUrl)
+          if (itemIdx >= 0) {
+            URL.revokeObjectURL(next[itemIdx].blobUrl)
+            next[itemIdx] = { id: data.id, file_path: data.file_path, blobUrl: '', progress: 100 }
+          }
+          return next
+        })
+      }
+    } catch {
+      addToast('图片上传失败', 'error')
+      setItems((prev) => prev.filter((it) => it.id !== null))
+    }
+  }
+
   const handleQuestionImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
-    setUploading(true)
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const { data } = await questionApi.uploadImage(files[i], 'question')
-        setQuestionImages((prev) => [...prev, data])
-      }
-    } catch { addToast('图片上传失败', 'error') }
-    finally {
-      setUploading(false)
-      if (questionInputRef.current) questionInputRef.current.value = ''
-    }
+    await uploadFiles(files, 'question', setQuestionImages)
+    if (questionInputRef.current) questionInputRef.current.value = ''
   }
 
   const handleSolutionImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
-    setUploadingSolution(true)
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const { data } = await questionApi.uploadImage(files[i], 'solution')
-        setSolutionImages((prev) => [...prev, data])
-      }
-    } catch { addToast('图片上传失败', 'error') }
-    finally {
-      setUploadingSolution(false)
-      if (solutionInputRef.current) solutionInputRef.current.value = ''
-    }
+    await uploadFiles(files, 'solution', setSolutionImages)
+    if (solutionInputRef.current) solutionInputRef.current.value = ''
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const pendingImages = questionImages.filter((i) => i.id === null).length
+    const pendingSolution = solutionImages.filter((i) => i.id === null).length
+    if (pendingImages > 0 || pendingSolution > 0) {
+      addToast('图片正在上传中，请稍后再保存', 'error')
+      return
+    }
     if (questionImages.length === 0 && !form.question_content.trim()) {
       addToast('请上传题目图片或输入题目内容', 'error')
       return
@@ -71,8 +137,8 @@ export default function QuestionNewPage() {
       await questionApi.create({
         ...form,
         tags: form.tags.split(/[,，\s]+/).filter(Boolean),
-        image_ids: questionImages.map((i) => i.id),
-        solution_image_ids: solutionImages.map((i) => i.id),
+        image_ids: questionImages.map((i) => i.id!).filter(Boolean),
+        solution_image_ids: solutionImages.map((i) => i.id!).filter(Boolean),
       })
       addToast('保存成功', 'success')
       navigate('/questions')
@@ -81,12 +147,35 @@ export default function QuestionNewPage() {
   }
 
   const removeQuestionImage = (index: number) => {
+    const img = questionImages[index]
+    if (img.blobUrl) URL.revokeObjectURL(img.blobUrl)
     setQuestionImages((prev) => prev.filter((_, i) => i !== index))
   }
 
   const removeSolutionImage = (index: number) => {
+    const img = solutionImages[index]
+    if (img.blobUrl) URL.revokeObjectURL(img.blobUrl)
     setSolutionImages((prev) => prev.filter((_, i) => i !== index))
   }
+
+  const renderThumbnail = (img: ImageItem, onRemove: () => void) => (
+    <div key={img.blobUrl || img.file_path} className="relative flex-shrink-0">
+      <img src={img.blobUrl || img.file_path} className="w-24 h-24 rounded-lg object-cover cursor-pointer" alt=""
+        onClick={() => setViewerState({ images: [{ src: img.blobUrl || img.file_path }], index: 0 })}
+      />
+      {img.progress < 100 && (
+        <div className="absolute inset-0 bg-black/60 rounded-lg flex flex-col items-center justify-center gap-1.5">
+          <div className="w-16 bg-gray-700 rounded-full h-2 overflow-hidden">
+            <div className="bg-blue-500 h-full rounded-full transition-all duration-200" style={{ width: `${img.progress}%` }} />
+          </div>
+          <span className="text-white text-[10px] font-medium">{img.progress}%</span>
+        </div>
+      )}
+      <button type="button" onClick={onRemove}
+        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center"
+      >×</button>
+    </div>
+  )
 
   return (
     <div className="pb-8">
@@ -117,31 +206,18 @@ export default function QuestionNewPage() {
 
         <input type="text" value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} placeholder="题目来源" className="w-full px-4 py-3 border border-gray-300 rounded-xl text-base" />
 
-        {/* 📸 题目图片 */}
+        {/* 题目图片 */}
         <div className="bg-white rounded-xl p-4 shadow-sm">
-          <label className="text-sm font-medium text-gray-700 mb-2 block">📸 拍照或上传题目图片</label>
+          <label className="text-sm font-medium text-gray-700 mb-2 block">拍照或上传题目图片</label>
           {questionImages.length > 0 && (
             <div className="flex gap-2 overflow-x-auto pb-2 mb-2">
-              {questionImages.map((img, idx) => (
-                <div key={img.id} className="relative flex-shrink-0">
-                  <img src={img.file_path} className="w-24 h-24 rounded-lg object-cover" alt="" />
-                  <button type="button" onClick={() => removeQuestionImage(idx)}
-                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center"
-                  >×</button>
-                </div>
-              ))}
+              {questionImages.map((img) => renderThumbnail(img, () => removeQuestionImage(questionImages.indexOf(img))))}
             </div>
           )}
           <label className="w-full min-h-[100px] rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:border-blue-400 transition-colors">
-            {uploading ? (
-              <span className="text-lg">⏳ 上传中...</span>
-            ) : (
-              <>
-                <span className="text-3xl mb-1">📸</span>
-                <span className="text-sm">点击拍照或选择图片</span>
-                <span className="text-xs text-gray-300 mt-1">支持多张图片</span>
-              </>
-            )}
+            <span className="text-3xl mb-1">📸</span>
+            <span className="text-sm">点击拍照或选择图片</span>
+            <span className="text-xs text-gray-300 mt-1">支持多张图片</span>
             <input ref={questionInputRef} type="file" accept="image/*" onChange={handleQuestionImageUpload} multiple className="hidden" />
           </label>
         </div>
@@ -166,25 +242,12 @@ export default function QuestionNewPage() {
             <div>
               {solutionImages.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto pb-2 mb-2">
-                  {solutionImages.map((img, idx) => (
-                    <div key={img.id} className="relative flex-shrink-0">
-                      <img src={img.file_path} className="w-24 h-24 rounded-lg object-cover" alt="" />
-                      <button type="button" onClick={() => removeSolutionImage(idx)}
-                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center"
-                      >×</button>
-                    </div>
-                  ))}
+                  {solutionImages.map((img) => renderThumbnail(img, () => removeSolutionImage(solutionImages.indexOf(img))))}
                 </div>
               )}
               <label className="w-full min-h-[80px] rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:border-blue-400 transition-colors">
-                {uploadingSolution ? (
-                  <span className="text-lg">⏳ 上传中...</span>
-                ) : (
-                  <>
-                    <span className="text-2xl mb-1">🖼️</span>
-                    <span className="text-sm">上传解析图片</span>
-                  </>
-                )}
+                <span className="text-2xl mb-1">🖼️</span>
+                <span className="text-sm">上传解析图片</span>
                 <input ref={solutionInputRef} type="file" accept="image/*" onChange={handleSolutionImageUpload} multiple className="hidden" />
               </label>
             </div>
@@ -198,6 +261,9 @@ export default function QuestionNewPage() {
           {saving ? '保存中...' : '保存错题'}
         </button>
       </form>
+      {viewerState && (
+        <ImageViewer images={viewerState.images} initialIndex={viewerState.index} onClose={() => setViewerState(null)} />
+      )}
     </div>
   )
 }

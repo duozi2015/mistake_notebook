@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { questionApi } from '../../services/questions'
 import type { Question } from '../../types'
+import ImageViewer from '../../components/Shared/ImageViewer'
 
 export default function QuestionDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -11,6 +12,7 @@ export default function QuestionDetailPage() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [currentSolutionImageIndex, setCurrentSolutionImageIndex] = useState(0)
   const [showSolution, setShowSolution] = useState(false)
+  const [viewerState, setViewerState] = useState<{ images: { src: string }[]; index: number } | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -47,8 +49,12 @@ export default function QuestionDetailPage() {
             <div className="relative rounded-xl overflow-hidden bg-gray-50 mb-2">
               <img
                 src={question.images[currentImageIndex].file_path}
-                className="w-full max-h-[400px] object-contain mx-auto"
+                className="w-full max-h-[400px] object-contain mx-auto cursor-pointer"
                 alt="题目图片"
+                onClick={() => setViewerState({
+                  images: question.images.map((img) => ({ src: img.file_path })),
+                  index: currentImageIndex,
+                })}
               />
               {question.images.length > 1 && (
                 <>
@@ -98,8 +104,12 @@ export default function QuestionDetailPage() {
                 <div className="relative rounded-xl overflow-hidden bg-gray-50">
                   <img
                     src={question.solution_images[currentSolutionImageIndex].file_path}
-                    className="w-full max-h-[400px] object-contain mx-auto"
+                    className="w-full max-h-[400px] object-contain mx-auto cursor-pointer"
                     alt="解析图片"
+                    onClick={() => setViewerState({
+                      images: question.solution_images.map((img) => ({ src: img.file_path })),
+                      index: currentSolutionImageIndex,
+                    })}
                   />
                   {question.solution_images.length > 1 && (
                     <>
@@ -155,6 +165,10 @@ export default function QuestionDetailPage() {
       <div className="text-xs text-gray-400 text-center mt-4">
         创建于 {new Date(question.created_at).toLocaleString()}
       </div>
+
+      {viewerState && (
+        <ImageViewer images={viewerState.images} initialIndex={viewerState.index} onClose={() => setViewerState(null)} />
+      )}
     </div>
   )
 }
