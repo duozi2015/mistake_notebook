@@ -1,4 +1,5 @@
 import os
+import subprocess
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -36,15 +37,28 @@ def startup():
     os.makedirs("uploads/questions", exist_ok=True)
 
 
+def _get_git_commit():
+    """获取当前 Git 提交的短哈希"""
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, cwd=os.path.dirname(__file__),
+            timeout=5,
+        ).stdout.strip()
+    except Exception:
+        return "unknown"
+
+
 @app.get("/api/v1/auth/health")
 def health():
     import socket
-    hostname = socket.gethostname()
-    # 判断环境：通过 hostname 或环境变量
-    env = os.getenv("APP_ENV", "development")
+    hostname = socket.gethostname().lower()
+    # 自动识别：MacBook Pro → 开发环境，其他（Mac mini 等）→ 生产环境
+    env = "development" if "macbook" in hostname else "production"
     return {
         "status": "ok",
         "version": "0.1.0",
+        "commit": _get_git_commit(),
         "environment": env,
-        "hostname": hostname,
+        "hostname": socket.gethostname(),
     }
