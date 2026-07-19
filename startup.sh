@@ -9,14 +9,19 @@ mkdir -p "$LOG_DIR"
 # 记录启动时间
 echo "=== $(date) 启动服务 ===" >> "$LOG_DIR/startup.log"
 
-# 1. 启动后端
+# 1. 加载环境变量
+set -a
+source "$PROJECT_DIR/.env" 2>/dev/null
+set +a
+
+# 2. 启动后端
 cd "$PROJECT_DIR/backend"
 source venv/bin/activate
 if pgrep -f "uvicorn app.main" > /dev/null; then
     echo "后端已在运行" >> "$LOG_DIR/startup.log"
 else
     nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > "$LOG_DIR/app.log" 2>&1 &
-    echo "后端已启动 (PID: $!)" >> "$LOG_DIR/startup.log"
+    echo "后端已启动 (PID: $!) 环境: ${APP_ENV:-development}" >> "$LOG_DIR/startup.log"
 fi
 
 # 2. 确保 Nginx 运行
