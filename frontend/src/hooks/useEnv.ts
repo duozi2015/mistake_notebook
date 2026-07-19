@@ -4,6 +4,7 @@ import api from '../services/api'
 interface EnvInfo {
   environment: string
   hostname: string
+  commit: string
 }
 
 export function useEnv() {
@@ -12,7 +13,7 @@ export function useEnv() {
   useEffect(() => {
     api.get<EnvInfo>('/auth/health')
       .then((res) => setEnv(res.data))
-      .catch(() => setEnv({ environment: 'development', hostname: 'unknown' }))
+      .catch(() => setEnv({ environment: 'development', hostname: 'unknown', commit: 'unknown' }))
   }, [])
 
   return env
