@@ -19,8 +19,10 @@ export const questionApi = {
   create: (data: CreateQuestionData) => api.post<Question>('/questions', data),
   update: (id: number, data: Partial<CreateQuestionData>) => api.put<Question>(`/questions/${id}`, data),
   delete: (id: number) => api.delete(`/questions/${id}`),
-  uploadImage: (file: File, imageType: string = 'question') => {
+  uploadImage: (file: File, imageType: string = 'question', onProgress?: (pct: number) => void) => {
     const fd = new FormData(); fd.append('file', file); fd.append('image_type', imageType)
-    return api.post<{ id: number; file_path: string; mime_type: string; file_size: number; image_type: string }>('/images/upload', fd)
+    return api.post<{ id: number; file_path: string; mime_type: string; file_size: number; image_type: string }>(
+      '/images/upload', fd, { onUploadProgress: (e) => { if (e.total && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)) } },
+    )
   },
 }

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { questionApi } from '../../services/questions'
 import type { Question } from '../../types'
+import ImageViewer from '../../components/Shared/ImageViewer'
 
 export default function QuestionListPage() {
   const [questions, setQuestions] = useState<Question[]>([])
@@ -9,6 +10,7 @@ export default function QuestionListPage() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [subject, setSubject] = useState('')
+  const [viewerState, setViewerState] = useState<{ images: { src: string }[]; index: number } | null>(null)
   const pageSize = 20
 
   const load = useCallback(async (p: number, subj: string) => {
@@ -67,7 +69,16 @@ export default function QuestionListPage() {
                 </div>
                 {q.images.length > 0 ? (
                   <div className="flex-shrink-0">
-                    <img src={q.images[0].file_path} className="w-16 h-16 rounded-lg object-cover" alt="" />
+                    <img src={q.images[0].file_path} className="w-16 h-16 rounded-lg object-cover cursor-pointer" alt=""
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setViewerState({
+                          images: q.images.map((img) => ({ src: img.file_path })),
+                          index: 0,
+                        })
+                      }}
+                    />
                   </div>
                 ) : (
                   <div className="flex-shrink-0 w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center text-xl text-gray-400">
@@ -88,6 +99,9 @@ export default function QuestionListPage() {
             >{p}</button>
           ))}
         </div>
+      )}
+      {viewerState && (
+        <ImageViewer images={viewerState.images} initialIndex={viewerState.index} onClose={() => setViewerState(null)} />
       )}
     </div>
   )

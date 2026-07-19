@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { reviewApi } from '../../services/reviews'
 import { useToastStore } from '../../stores/toastStore'
 import type { Question } from '../../types'
+import ImageViewer from '../../components/Shared/ImageViewer'
 
 const QUALITY_OPTIONS = [
   { value: 0, label: 'Again', hint: '完全忘记', color: 'bg-red-500 active:bg-red-600', textColor: 'text-white' },
@@ -26,6 +27,8 @@ export default function ReviewPage() {
   const [showAnswer, setShowAnswer] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [ratings, setRatings] = useState<{ questionId: number; quality: number }[]>([])
+  const [selectedSubject, setSelectedSubject] = useState('')
+  const [viewerState, setViewerState] = useState<{ images: { src: string }[]; index: number } | null>(null)
 
   const loadDaily = useCallback(async () => {
     setPageState('loading')
@@ -50,14 +53,24 @@ export default function ReviewPage() {
     loadDaily()
   }, [loadDaily])
 
+  const subjects = useMemo(
+    () => Array.from(new Set(questions.map((q) => q.subject).filter(Boolean))).sort(),
+    [questions],
+  )
+  const filteredQuestions = useMemo(
+    () => selectedSubject ? questions.filter((q) => q.subject === selectedSubject) : questions,
+    [questions, selectedSubject],
+  )
+  const filteredTotalCount = selectedSubject ? filteredQuestions.length : totalCount
+
   const currentQuestion = useMemo(
-    () => questions[currentIndex] ?? null,
-    [questions, currentIndex],
+    () => filteredQuestions[currentIndex] ?? null,
+    [filteredQuestions, currentIndex],
   )
 
-  const isLastQuestion = currentIndex >= questions.length - 1
+  const isLastQuestion = currentIndex >= filteredQuestions.length - 1
   const reviewedCount = ratings.length
-  const progress = totalCount > 0 ? (reviewedCount / totalCount) * 100 : 0
+  const progress = filteredTotalCount > 0 ? (reviewedCount / filteredTotalCount) * 100 : 0
 
   const correctCount = ratings.filter((r) => r.quality >= 3).length
   const accuracy = reviewedCount > 0 ? Math.round((correctCount / reviewedCount) * 100) : 0
@@ -88,7 +101,7 @@ export default function ReviewPage() {
 
           navigate('/review/complete', {
             state: {
-              totalCount,
+              totalCount: filteredTotalCount,
               reviewedCount: totalReviewed,
               accuracy: finalAccuracy,
               distribution,
@@ -188,14 +201,35 @@ export default function ReviewPage() {
     <div className="fixed inset-0 z-10 bg-gray-50 flex flex-col">
       <div className="flex-1 flex flex-col px-5 pt-14 pb-6 overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-2">
           <h1 className="text-lg font-bold text-gray-800">
             今日复习
           </h1>
           <span className="text-sm text-gray-500">
-            剩余 {totalCount - reviewedCount}/{totalCount} 题
+            剩余 {filteredTotalCount - reviewedCount}/{filteredTotalCount} 题
           </span>
         </div>
+
+        {/* Subject filter */}
+        {subjects.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 -mx-1 px-1">
+            <button
+              onClick={() => { setSelectedSubject(''); setCurrentIndex(0); setShowAnswer(false) }}
+              className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                !selectedSubject ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'
+              }`}
+            >全部</button>
+            {subjects.map((s) => (
+              <button
+                key={s}
+                onClick={() => { setSelectedSubject(s); setCurrentIndex(0); setShowAnswer(false) }}
+                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  selectedSubject === s ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'
+                }`}
+              >{s}</button>
+            ))}
+          </div>
+        )}
 
         {/* Flashcard */}
         <div className="flex-1 flex flex-col">
@@ -233,8 +267,13 @@ export default function ReviewPage() {
               {/* Question images */}
               {currentQuestion.images.length > 0 && (
                 <div className="mb-3">
-                  {currentQuestion.images.map((img) => (
-                    <img key={img.id} src={img.file_path} className="w-full rounded-xl object-contain max-h-64 mb-2" alt="题目图片" />
+                  {currentQuestion.images.map((img, idx) => (
+                    <img key={img.id} src={img.file_path} className="w-full rounded-xl object-contain max-h-64 mb-2 cursor-pointer" alt="题目图片"
+                      onClick={() => setViewerState({
+                        images: currentQuestion.images.map((i) => ({ src: i.file_path })),
+                        index: idx,
+                      })}
+                    />
                   ))}
                 </div>
               )}
@@ -258,8 +297,13 @@ export default function ReviewPage() {
                   {/* Solution images */}
                   {currentQuestion.solution_images.length > 0 && (
                     <div className="mb-3">
-                      {currentQuestion.solution_images.map((img) => (
-                        <img key={img.id} src={img.file_path} className="w-full rounded-xl object-contain max-h-64 mb-2" alt="解析图片" />
+                      {currentQuestion.solution_images.map((img, idx) => (
+                        <img key={img.id} src={img.file_path} className="w-full rounded-xl object-contain max-h-64 mb-2 cursor-pointer" alt="解析图片"
+                          onClick={() => setViewerState({
+                            images: currentQuestion.solution_images.map((i) => ({ src: i.file_path })),
+                            index: idx,
+                          })}
+                        />
                       ))}
                     </div>
                   )}
@@ -322,6 +366,9 @@ export default function ReviewPage() {
           </div>
         </div>
       </div>
+      {viewerState && (
+        <ImageViewer images={viewerState.images} initialIndex={viewerState.index} onClose={() => setViewerState(null)} />
+      )}
     </div>
   )
 }
