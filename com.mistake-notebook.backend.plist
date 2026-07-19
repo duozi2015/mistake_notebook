@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mistake-notebook.backend</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/doudou_files/Claude/mistake_notebook/backend/venv/bin/uvicorn</string>
+        <string>app.main:app</string>
+        <string>--host</string>
+        <string>0.0.0.0</string>
+        <string>--port</string>
+        <string>8000</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/doudou_files/Claude/mistake_notebook/backend</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>JWT_SECRET</key>
+        <string>your-strong-jwt-secret-at-least-32-chars</string>
+        <key>DATABASE_URL</key>
+        <string>sqlite:///data/mistake_notebook.db</string>
+        <key>OCR_ENABLED</key>
+        <string>false</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/doudou_files/Claude/mistake_notebook/backend/logs/access.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/doudou_files/Claude/mistake_notebook/backend/logs/error.log</string>
+</dict>
+</plist>

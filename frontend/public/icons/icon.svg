@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#3b82f6"/>
+  <!-- Book spine -->
+  <rect x="104" y="80" width="40" height="352" rx="6" fill="#ffffff" fill-opacity="0.9"/>
+  <!-- Book left page -->
+  <rect x="144" y="80" width="160" height="352" rx="4" fill="#ffffff" fill-opacity="0.95"/>
+  <!-- Book right page -->
+  <rect x="208" y="80" width="160" height="352" rx="4" fill="#ffffff" fill-opacity="0.85"/>
+  <!-- Lines on left page -->
+  <line x1="172" y1="156" x2="280" y2="156" stroke="#3b82f6" stroke-width="8" stroke-linecap="round" stroke-opacity="0.3"/>
+  <line x1="172" y1="200" x2="280" y2="200" stroke="#3b82f6" stroke-width="8" stroke-linecap="round" stroke-opacity="0.3"/>
+  <line x1="172" y1="244" x2="250" y2="244" stroke="#3b82f6" stroke-width="8" stroke-linecap="round" stroke-opacity="0.3"/>
+  <!-- Checkmark on right page -->
+  <path d="M260 200 L280 220 L330 170" stroke="#3b82f6" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.7"/>
+</svg>
