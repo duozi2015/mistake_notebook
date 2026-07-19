@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
 import { statisticsApi, type Overview, type ReportData, type ErrorTypeItem, type WeakTagItem } from '../../services/statistics'
@@ -15,6 +15,7 @@ export default function DashboardPage() {
   const [overview, setOverview] = useState<Overview | null>(null)
   const [report, setReport] = useState<ReportData | null>(null)
   const [reviewQuestions, setReviewQuestions] = useState<Question[]>([])
+  const [selectedSubject, setSelectedSubject] = useState('')
 
   const fetchData = useCallback(async () => {
     setPageState('loading')
@@ -49,6 +50,15 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  const subjects = useMemo(
+    () => Array.from(new Set(reviewQuestions.map((q) => q.subject).filter(Boolean))).sort(),
+    [reviewQuestions],
+  )
+  const filteredReviewQuestions = useMemo(
+    () => selectedSubject ? reviewQuestions.filter((q) => q.subject === selectedSubject) : reviewQuestions,
+    [reviewQuestions, selectedSubject],
+  )
 
   /* ──────────── Loading skeleton ──────────── */
   if (pageState === 'loading') {
@@ -152,14 +162,40 @@ export default function DashboardPage() {
             </button>
           )}
         </div>
+
+        {/* Subject filter */}
+        {subjects.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
+            <button
+              onClick={() => setSelectedSubject('')}
+              className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                !selectedSubject ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'
+              }`}
+            >全部</button>
+            {subjects.map((s) => (
+              <button
+                key={s}
+                onClick={() => setSelectedSubject(s)}
+                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  selectedSubject === s ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'
+                }`}
+              >{s}</button>
+            ))}
+          </div>
+        )}
+
         {reviewQuestions.length === 0 ? (
           <div className="py-6 text-center">
             <div className="text-3xl mb-2">✅</div>
             <p className="text-sm text-gray-400">今日暂无待复习题目</p>
           </div>
+        ) : filteredReviewQuestions.length === 0 ? (
+          <div className="py-6 text-center">
+            <p className="text-sm text-gray-400">该学科暂无待复习题目</p>
+          </div>
         ) : (
           <div>
-            {reviewQuestions.map((q) => (
+            {filteredReviewQuestions.slice(0, 5).map((q) => (
               <div
                 key={q.id}
                 className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0"
