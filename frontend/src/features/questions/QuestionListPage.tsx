@@ -20,7 +20,7 @@ export default function QuestionListPage() {
     setLoading(true)
     setPage(p)
     try {
-      const { data } = await questionApi.list({ page: p, page_size: pageSize, subject: subj || undefined })
+      const { data } = await questionApi.list({ page: p, page_size: pageSize, subject: subj || undefined, status: 'active' })
       setQuestions(data.data)
       setTotal(data.pagination.total)
     } finally { setLoading(false) }
@@ -37,8 +37,9 @@ export default function QuestionListPage() {
     try {
       await questionApi.delete(q.id)
       addToast('题目已删除', 'success')
-      // 重新加载列表
-      load(page, subject)
+      // 如果当前页只剩1条且不是第1页，回到上一页
+      const isLastOnPage = questions.length === 1 && page > 1
+      load(isLastOnPage ? page - 1 : page, subject)
     } catch {
       addToast('删除失败，请重试', 'error')
     } finally {
