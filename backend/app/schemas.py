@@ -8,6 +8,7 @@ class UserRegister(BaseModel):
     username: str = Field(min_length=3, max_length=50)
     password: str = Field(min_length=8, max_length=100)
     display_name: str = Field(default="", max_length=100)
+    invite_code: str = Field(default="", max_length=20)
 
 
 class UserLogin(BaseModel):
@@ -123,3 +124,20 @@ class ErrorDetail(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorDetail
+
+
+# === 管理员相关 ===
+class RegistrationModeUpdate(BaseModel):
+    mode: str = Field(..., pattern="^(open|invite_only)$")
+
+
+class InviteCodeResponse(BaseModel):
+    code: str
+    expires_at: datetime
+    used: bool
+    remaining_seconds: int
+
+
+class AdminSettingsResponse(BaseModel):
+    registration_mode: str
+    invite_code: InviteCodeResponse | None = None

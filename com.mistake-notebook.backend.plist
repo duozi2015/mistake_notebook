@@ -7,7 +7,7 @@
     <string>com.mistake-notebook.backend</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/doudou_files/Claude/mistake_notebook/backend/venv/bin/uvicorn</string>
+        <string>/Users/doudou_files/claude/mistake_notebook/backend/venv/bin/uvicorn</string>
         <string>app.main:app</string>
         <string>--host</string>
         <string>0.0.0.0</string>
@@ -15,9 +15,11 @@
         <string>8000</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/doudou_files/Claude/mistake_notebook/backend</string>
+    <string>/Users/doudou_files/claude/mistake_notebook/backend</string>
     <key>EnvironmentVariables</key>
     <dict>
+        <key>DYLD_LIBRARY_PATH</key>
+        <string>/opt/homebrew/Cellar/expat/2.8.2/lib</string>
         <key>JWT_SECRET</key>
         <string>your-strong-jwt-secret-at-least-32-chars</string>
         <key>DATABASE_URL</key>
@@ -30,8 +32,8 @@
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/Users/doudou_files/Claude/mistake_notebook/backend/logs/access.log</string>
+    <string>/Users/doudou_files/claude/mistake_notebook/backend/logs/access.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/doudou_files/Claude/mistake_notebook/backend/logs/error.log</string>
+    <string>/Users/doudou_files/claude/mistake_notebook/backend/logs/error.log</string>
 </dict>
 </plist>

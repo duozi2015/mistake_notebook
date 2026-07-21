@@ -1,10 +1,11 @@
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
 
 from app.config import settings
 from app.database import get_db
-from app.models import User, TokenBlacklist
+from app.models import User, TokenBlacklist, InviteCode, SystemConfig
 from app.schemas import UserRegister, UserLogin, TokenResponse, RefreshRequest, UserResponse, PasswordChange
 from app.auth import (
     hash_password,
@@ -17,14 +18,73 @@ from app.auth import (
 router = APIRouter(prefix="/api/v1/auth", tags=["认证"])
 
 
+@router.get("/registration-mode")
+def get_registration_mode(db: Session = Depends(get_db)):
+    """获取当前注册模式（公开端点，无需认证）"""
+    config = (
+        db.query(SystemConfig)
+        .filter(SystemConfig.key == "registration_mode")
+        .first()
+    )
+    mode = config.value if config else "open"
+    return {"mode": mode}
+
+
 @router.post("/register", response_model=UserResponse)
 def register(data: UserRegister, db: Session = Depends(get_db)):
+    # 检查用户名是否已存在
     existing = db.query(User).filter(User.username == data.username).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "CONFLICT", "message": "用户名已存在"},
         )
+
+    # 检查注册模式
+    config = (
+        db.query(SystemConfig)
+        .filter(SystemConfig.key == "registration_mode")
+        .first()
+    )
+    registration_mode = config.value if config else "open"
+
+    if registration_mode == "invite_only":
+        # 仅邀请码模式：验证邀请码
+        if not data.invite_code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "INVITE_CODE_REQUIRED", "message": "当前为仅邀请码注册模式，请提供邀请码"},
+            )
+
+        now = datetime.utcnow()
+        invite = (
+            db.query(InviteCode)
+            .filter(
+                InviteCode.code == data.invite_code.strip().upper(),
+                InviteCode.used == 0,
+                InviteCode.expires_at > now,
+            )
+            .first()
+        )
+        if not invite:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "INVALID_INVITE_CODE", "message": "邀请码无效或已过期"},
+            )
+
+        # 标记邀请码为已使用
+        invite.used = 1
+        invite.used_at = now
+
+        # 自动生成新邀请码
+        from app.routers.admin import _generate_invite_code as gen_code
+        new_code = InviteCode(
+            code=gen_code(),
+            expires_at=now + timedelta(days=2),
+            used=0,
+        )
+        db.add(new_code)
+
     user = User(
         username=data.username,
         password_hash=hash_password(data.password),
