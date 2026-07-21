@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.database import engine, Base
 from app.config import settings
-from app.routers import auth, questions, images, reviews, ocr, variants, export, statistics
+from app.routers import auth, questions, images, reviews, ocr, variants, export, statistics, admin
 
 app = FastAPI(title="智能错题本 API", version="0.1.0")
 
@@ -27,6 +27,7 @@ app.include_router(statistics.router)
 app.include_router(ocr.router)
 app.include_router(variants.router)
 app.include_router(export.router)
+app.include_router(admin.router)
 
 
 @app.on_event("startup")

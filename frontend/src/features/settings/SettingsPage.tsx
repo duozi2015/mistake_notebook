@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuthStore } from '../../stores/authStore'
 import { authApi } from '../../services/auth'
+import AdminPanel from './AdminPanel'
 
 type UserState = 'loading' | 'loaded' | 'error'
 type PageState = 'idle' | 'passwordChanging' | 'passwordSuccess' | 'passwordError'
@@ -255,6 +256,9 @@ export default function SettingsPage() {
           <span>退出登录</span>
         </button>
       </div>
+
+      {/* ── Admin section (仅管理员 doudou 可见) ── */}
+      {user?.username === 'doudou' && <AdminPanel />}
 
       {/* ── About section ── */}
       <div className="bg-white rounded-xl p-5 shadow-sm">

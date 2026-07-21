@@ -1,21 +1,32 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { authApi } from '../../services/auth'
 import { useToastStore } from '../../stores/toastStore'
 
 export default function RegisterPage() {
-  const [form, setForm] = useState({ username: '', displayName: '', password: '', confirmPassword: '' })
+  const [form, setForm] = useState({ username: '', displayName: '', password: '', confirmPassword: '', inviteCode: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [regMode, setRegMode] = useState<'open' | 'invite_only' | 'loading'>('loading')
   const navigate = useNavigate()
   const addToast = useToastStore((s) => s.addToast)
+
+  // 获取注册模式
+  useEffect(() => {
+    authApi.getRegistrationMode()
+      .then((res) => setRegMode(res.data.mode))
+      .catch(() => setRegMode('open'))
+  }, [])
 
   const validate = () => {
     const errs: Record<string, string> = {}
     if (form.username.length < 3) errs.username = '用户名至少3个字符'
     if (form.password.length < 8) errs.password = '密码至少8位字符'
     if (form.password !== form.confirmPassword) errs.confirmPassword = '两次密码不一致'
+    if (regMode === 'invite_only' && !form.inviteCode.trim()) {
+      errs.inviteCode = '请输入邀请码'
+    }
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -29,6 +40,7 @@ export default function RegisterPage() {
         username: form.username.trim(),
         password: form.password,
         display_name: form.displayName.trim() || undefined,
+        invite_code: form.inviteCode.trim() || undefined,
       })
       setSuccess(true)
       addToast('注册成功，请登录', 'success')
@@ -36,6 +48,7 @@ export default function RegisterPage() {
     } catch (err: any) {
       const msg = err.response?.data?.detail?.message || '注册失败'
       if (msg.includes('已存在')) setErrors({ username: msg })
+      else if (msg.includes('邀请码')) setErrors({ inviteCode: msg })
       else addToast(msg, 'error')
     } finally { setLoading(false) }
   }
@@ -63,6 +76,9 @@ export default function RegisterPage() {
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
           <FormField label="用户名" error={errors.username} placeholder="3-20位字符" value={form.username} onChange={(v) => setForm({ ...form, username: v })} />
           <FormField label="显示名称" error={errors.displayName} placeholder="页面顶部显示的名称" value={form.displayName} onChange={(v) => setForm({ ...form, displayName: v })} />
+          {regMode === 'invite_only' && (
+            <FormField label="邀请码" error={errors.inviteCode} placeholder="请输入管理员提供的邀请码" value={form.inviteCode} onChange={(v) => setForm({ ...form, inviteCode: v })} />
+          )}
           <FormField label="密码" type="password" error={errors.password} placeholder="至少8位字符" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />
           <FormField label="确认密码" type="password" error={errors.confirmPassword} placeholder="再次输入密码" value={form.confirmPassword} onChange={(v) => setForm({ ...form, confirmPassword: v })} />
           <button type="submit" disabled={loading} className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium text-base disabled:opacity-50 active:bg-blue-700">
