@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { to: '/review', label: '复习', icon: '🔄' },
   { to: '/questions', label: '错题', icon: '📚' },
   { to: '/questions/new', label: '录入', icon: '📝' },
+  { to: '/statistics', label: '统计', icon: '📊' },
   { to: '/settings', label: '设置', icon: '⚙️' },
 ]
 
