@@ -1,15 +1,18 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { questionApi } from '../../services/questions'
+import { useToastStore } from '../../stores/toastStore'
 import type { Question } from '../../types'
 import ImageViewer from '../../components/Shared/ImageViewer'
 
 export default function QuestionListPage() {
+  const addToast = useToastStore((s) => s.addToast)
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [subject, setSubject] = useState('')
+  const [deleting, setDeleting] = useState<number | null>(null)
   const [viewerState, setViewerState] = useState<{ images: { src: string }[]; index: number } | null>(null)
   const pageSize = 20
 
@@ -24,6 +27,24 @@ export default function QuestionListPage() {
   }, [])
 
   useEffect(() => { load(1, subject) }, [subject, load])
+
+  const handleDelete = async (q: Question, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const confirmed = window.confirm(`确定要删除题目「${(q.question_content || '无内容').slice(0, 20)}...」吗？`)
+    if (!confirmed) return
+    setDeleting(q.id)
+    try {
+      await questionApi.delete(q.id)
+      addToast('题目已删除', 'success')
+      // 重新加载列表
+      load(page, subject)
+    } catch {
+      addToast('删除失败，请重试', 'error')
+    } finally {
+      setDeleting(null)
+    }
+  }
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -53,40 +74,51 @@ export default function QuestionListPage() {
       ) : (
         <div className="space-y-3">
           {questions.map((q) => (
-            <Link key={q.id} to={`/questions/${q.id}`} className="block bg-white rounded-xl p-4 shadow-sm">
-              <div className="flex gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between mb-1">
-                    <span className="text-sm text-blue-600 font-medium">{q.subject || '未分类'}</span>
-                    <span className="text-xs text-gray-400 flex-shrink-0">{'★'.repeat(q.difficulty)}{'☆'.repeat(5 - q.difficulty)}</span>
+            <div key={q.id} className="relative bg-white rounded-xl shadow-sm">
+              <Link to={`/questions/${q.id}`} className="block p-4">
+                <div className="flex gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between mb-1">
+                      <span className="text-sm text-blue-600 font-medium">{q.subject || '未分类'}</span>
+                      <span className="text-xs text-gray-400 flex-shrink-0">{'★'.repeat(q.difficulty)}{'☆'.repeat(5 - q.difficulty)}</span>
+                    </div>
+                    <p className="text-gray-800 text-sm line-clamp-2">{q.question_content || '无题目内容'}</p>
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      {q.tags.map((t) => <span key={t} className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs">{t}</span>)}
+                      {q.error_type && <span className="px-2 py-0.5 bg-red-50 text-red-500 rounded text-xs">{q.error_type}</span>}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-2">{new Date(q.created_at).toLocaleDateString()}</div>
                   </div>
-                  <p className="text-gray-800 text-sm line-clamp-2">{q.question_content || '无题目内容'}</p>
-                  <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    {q.tags.map((t) => <span key={t} className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs">{t}</span>)}
-                    {q.error_type && <span className="px-2 py-0.5 bg-red-50 text-red-500 rounded text-xs">{q.error_type}</span>}
-                  </div>
-                  <div className="text-xs text-gray-400 mt-2">{new Date(q.created_at).toLocaleDateString()}</div>
+                  {q.images.length > 0 ? (
+                    <div className="flex-shrink-0">
+                      <img src={q.images[0].file_path} className="w-16 h-16 rounded-lg object-cover cursor-pointer" alt=""
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setViewerState({
+                            images: q.images.map((img) => ({ src: img.file_path })),
+                            index: 0,
+                          })
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex-shrink-0 w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center text-xl text-gray-400">
+                      📄
+                    </div>
+                  )}
                 </div>
-                {q.images.length > 0 ? (
-                  <div className="flex-shrink-0">
-                    <img src={q.images[0].file_path} className="w-16 h-16 rounded-lg object-cover cursor-pointer" alt=""
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        setViewerState({
-                          images: q.images.map((img) => ({ src: img.file_path })),
-                          index: 0,
-                        })
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="flex-shrink-0 w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center text-xl text-gray-400">
-                    📄
-                  </div>
-                )}
-              </div>
-            </Link>
+              </Link>
+              {/* 删除按钮 */}
+              <button
+                onClick={(e) => handleDelete(q, e)}
+                disabled={deleting === q.id}
+                className="absolute top-2 right-2 w-7 h-7 bg-gray-100 hover:bg-red-100 text-gray-400 hover:text-red-500 rounded-full flex items-center justify-center text-xs transition-colors disabled:opacity-50"
+                title="删除"
+              >
+                {deleting === q.id ? '...' : '✕'}
+              </button>
+            </div>
           ))}
         </div>
       )}

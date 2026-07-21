@@ -1,24 +1,85 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { questionApi } from '../../services/questions'
+import { useToastStore } from '../../stores/toastStore'
 import type { Question } from '../../types'
 import ImageViewer from '../../components/Shared/ImageViewer'
 
 export default function QuestionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const addToast = useToastStore((s) => s.addToast)
   const [question, setQuestion] = useState<Question | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [currentSolutionImageIndex, setCurrentSolutionImageIndex] = useState(0)
   const [showSolution, setShowSolution] = useState(false)
   const [viewerState, setViewerState] = useState<{ images: { src: string }[]; index: number } | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editForm, setEditForm] = useState({
+    question_content: '',
+    subject: '',
+    error_type: '',
+    difficulty: 3,
+    source: '',
+    correct_solution: '',
+    user_analysis: '',
+    tags: '',
+  })
+
+  const fetchQuestion = (questionId: number) => {
+    setLoading(true)
+    questionApi.get(questionId)
+      .then(({ data }) => {
+        setQuestion(data)
+        setEditForm({
+          question_content: data.question_content || '',
+          subject: data.subject || '',
+          error_type: data.error_type || '',
+          difficulty: data.difficulty,
+          source: data.source || '',
+          correct_solution: data.correct_solution || '',
+          user_analysis: data.user_analysis || '',
+          tags: data.tags.join(', '),
+        })
+      })
+      .finally(() => setLoading(false))
+  }
 
   useEffect(() => {
     if (!id) return
-    setLoading(true)
-    questionApi.get(Number(id)).then(({ data }) => setQuestion(data)).finally(() => setLoading(false))
+    fetchQuestion(Number(id))
   }, [id])
+
+  const handleSave = async () => {
+    if (!question) return
+    setSaving(true)
+    try {
+      const tags = editForm.tags
+        .split(/[,，]/)
+        .map((t) => t.trim())
+        .filter(Boolean)
+
+      const { data } = await questionApi.update(question.id, {
+        question_content: editForm.question_content,
+        subject: editForm.subject,
+        error_type: editForm.error_type,
+        difficulty: editForm.difficulty,
+        source: editForm.source,
+        correct_solution: editForm.correct_solution,
+        user_analysis: editForm.user_analysis,
+        tags,
+      })
+      setQuestion(data)
+      setEditing(false)
+      addToast('题目已更新', 'success')
+    } catch {
+      addToast('保存失败，请重试', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   if (loading) return <div className="text-center py-20"><div className="animate-spin text-4xl">⏳</div></div>
   if (!question) return <div className="text-center py-20 text-gray-400">题目不存在</div>
@@ -28,9 +89,124 @@ export default function QuestionDetailPage() {
 
   return (
     <div className="pb-8">
-      <button onClick={() => navigate(-1)} className="text-blue-600 text-sm mb-4">← 返回</button>
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={() => navigate(-1)} className="text-blue-600 text-sm">← 返回</button>
+        <div className="flex gap-2">
+          {!editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium active:bg-gray-200 min-h-[36px]"
+            >
+              ✏️ 编辑
+            </button>
+          )}
+          {editing && (
+            <>
+              <button
+                onClick={() => { setEditing(false); fetchQuestion(question.id) }}
+                className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium active:bg-gray-200 min-h-[36px]"
+                disabled={saving}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSave}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium active:bg-blue-700 min-h-[36px]"
+                disabled={saving}
+              >
+                {saving ? '保存中...' : '💾 保存'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
 
-      {/* 元信息 */}
+      {editing ? (
+        /* ── 编辑模式 ── */
+        <div className="bg-white rounded-xl p-4 shadow-sm mb-4 space-y-4">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">科目</label>
+            <input
+              type="text" value={editForm.subject}
+              onChange={(e) => setEditForm({ ...editForm, subject: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400"
+              placeholder="例如：数学、物理"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">难度（1-5）</label>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setEditForm({ ...editForm, difficulty: d })}
+                  className={`w-9 h-9 rounded-lg text-sm font-medium ${
+                    editForm.difficulty === d ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >{d}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">错误类型</label>
+            <input
+              type="text" value={editForm.error_type}
+              onChange={(e) => setEditForm({ ...editForm, error_type: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400"
+              placeholder="例如：计算错误、概念不清"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">标签（逗号分隔）</label>
+            <input
+              type="text" value={editForm.tags}
+              onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400"
+              placeholder="函数、二次函数"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">来源</label>
+            <input
+              type="text" value={editForm.source}
+              onChange={(e) => setEditForm({ ...editForm, source: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400"
+              placeholder="例如：月考、期中考试"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">题目内容</label>
+            <textarea
+              value={editForm.question_content}
+              onChange={(e) => setEditForm({ ...editForm, question_content: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 min-h-[100px]"
+              placeholder="输入题目内容"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">正确答案</label>
+            <textarea
+              value={editForm.correct_solution}
+              onChange={(e) => setEditForm({ ...editForm, correct_solution: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 min-h-[80px]"
+              placeholder="输入正确答案"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">反思笔记</label>
+            <textarea
+              value={editForm.user_analysis}
+              onChange={(e) => setEditForm({ ...editForm, user_analysis: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 min-h-[80px]"
+              placeholder="输入反思笔记"
+            />
+          </div>
+        </div>
+      ) : (
+        <>
+        {/* 查看模式 */}
+
+        {/* 元信息 */}
       <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
         <div className="flex items-center gap-2 mb-3">
           <span className="text-sm text-blue-600 font-medium">{question.subject || '未分类'}</span>
@@ -165,6 +341,8 @@ export default function QuestionDetailPage() {
       <div className="text-xs text-gray-400 text-center mt-4">
         创建于 {new Date(question.created_at).toLocaleString()}
       </div>
+        </>
+      )}
 
       {viewerState && (
         <ImageViewer images={viewerState.images} initialIndex={viewerState.index} onClose={() => setViewerState(null)} />
