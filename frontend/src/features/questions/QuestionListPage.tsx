@@ -59,8 +59,9 @@ export default function QuestionListPage() {
     }
     setExporting(true)
     try {
-      const { data } = await exportApi.pdf(ids, true)
-      const url = window.URL.createObjectURL(new Blob([data]))
+      const response = await exportApi.pdf(ids, true)
+      const blob = response.data as Blob
+      const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
       link.download = `错题本导出_${new Date().toISOString().slice(0, 10)}.pdf`
@@ -69,8 +70,9 @@ export default function QuestionListPage() {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
       addToast(`导出成功（共${ids.length}题）`, 'success')
-    } catch {
-      addToast('导出失败，请重试', 'error')
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail?.message || '导出失败，请重试'
+      addToast(msg, 'error')
     } finally {
       setExporting(false)
     }
