@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { questionApi } from '../../services/questions'
+import { exportApi } from '../../services/export'
 import { useToastStore } from '../../stores/toastStore'
 import type { Question } from '../../types'
 import ImageViewer from '../../components/Shared/ImageViewer'
@@ -13,6 +14,7 @@ export default function QuestionListPage() {
   const [total, setTotal] = useState(0)
   const [subject, setSubject] = useState('')
   const [deleting, setDeleting] = useState<number | null>(null)
+  const [exporting, setExporting] = useState(false)
   const [viewerState, setViewerState] = useState<{ images: { src: string }[]; index: number } | null>(null)
   const pageSize = 20
 
@@ -49,11 +51,45 @@ export default function QuestionListPage() {
 
   const totalPages = Math.ceil(total / pageSize)
 
+  const handleExport = async () => {
+    const ids = questions.map((q) => q.id)
+    if (ids.length === 0) {
+      addToast('没有可导出的题目', 'error')
+      return
+    }
+    setExporting(true)
+    try {
+      const { data } = await exportApi.pdf(ids, true)
+      const url = window.URL.createObjectURL(new Blob([data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `错题本导出_${new Date().toISOString().slice(0, 10)}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      addToast(`导出成功（共${ids.length}题）`, 'success')
+    } catch {
+      addToast('导出失败，请重试', 'error')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="pb-8">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-lg font-bold text-gray-800">我的错题</h1>
-        <Link to="/questions/new" className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm">+ 新增</Link>
+        <div className="flex gap-2">
+          <button
+            onClick={handleExport}
+            disabled={exporting || questions.length === 0}
+            className="px-3 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium active:bg-gray-200 disabled:opacity-40 min-h-[36px]"
+          >
+            {exporting ? '导出中...' : '📥 导出'}
+          </button>
+          <Link to="/questions/new" className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm">+ 新增</Link>
+        </div>
       </div>
 
       <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
