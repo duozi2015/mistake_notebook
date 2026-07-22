@@ -52,6 +52,6 @@ export const statisticsApi = {
   overview: () => api.get<Overview>('/statistics/overview'),
   trends: () => api.get<{ daily: TrendItem[] }>('/statistics/trends'),
   report: () => api.get<ReportData>('/statistics/report'),
-  mastery: () => api.get<{ data: MasteryItem[] }>('/knowledge/mastery'),
-  heatmap: () => api.get<{ data: HeatmapItem[] }>('/knowledge/heatmap'),
+  mastery: () => api.get<{ data: MasteryItem[] }>('/statistics/knowledge/mastery'),
+  heatmap: () => api.get<{ data: HeatmapItem[] }>('/statistics/knowledge/heatmap'),
 }
