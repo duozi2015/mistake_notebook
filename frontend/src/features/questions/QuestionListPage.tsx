@@ -71,7 +71,18 @@ export default function QuestionListPage() {
       window.URL.revokeObjectURL(url)
       addToast(`导出成功（共${ids.length}题）`, 'success')
     } catch (err: any) {
-      const msg = err?.response?.data?.detail?.message || '导出失败，请重试'
+      // 当 responseType 为 blob 时，错误响应也是 Blob，需要尝试解析
+      let msg = '导出失败，请重试'
+      try {
+        const errorData = err?.response?.data
+        if (errorData instanceof Blob && errorData.type?.includes('json')) {
+          const text = await errorData.text()
+          const parsed = JSON.parse(text)
+          msg = parsed?.detail?.message || parsed?.message || msg
+        } else if (errorData?.detail?.message) {
+          msg = errorData.detail.message
+        }
+      } catch { /* ignore parse errors */ }
       addToast(msg, 'error')
     } finally {
       setExporting(false)
