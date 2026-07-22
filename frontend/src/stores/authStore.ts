@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import api from '../services/api'
 import type { User } from '../types'
 
 interface AuthState {
@@ -16,7 +17,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.setItem('user', JSON.stringify(user))
     set({ user, isAuthenticated: true })
   },
-  logout: () => {
+  logout: async () => {
+    try {
+      await api.post('/auth/logout')
+    } catch {
+      // 即使后端调用失败，也清理本地状态
+    }
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('user')

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { questionApi } from '../../services/questions'
+import { reviewApi } from '../../services/reviews'
 import { useToastStore } from '../../stores/toastStore'
 import type { Question } from '../../types'
 import ImageViewer from '../../components/Shared/ImageViewer'
@@ -17,6 +18,9 @@ export default function QuestionDetailPage() {
   const [viewerState, setViewerState] = useState<{ images: { src: string }[]; index: number } | null>(null)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [reviewHistory, setReviewHistory] = useState<any[]>([])
+  const [showReviewHistory, setShowReviewHistory] = useState(false)
+  const [reviewHistoryLoading, setReviewHistoryLoading] = useState(false)
   const [editForm, setEditForm] = useState({
     question_content: '',
     subject: '',
@@ -78,6 +82,26 @@ export default function QuestionDetailPage() {
       addToast('保存失败，请重试', 'error')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const toggleReviewHistory = async () => {
+    if (showReviewHistory) {
+      setShowReviewHistory(false)
+      return
+    }
+    if (!question) return
+    setShowReviewHistory(true)
+    if (reviewHistory.length === 0) {
+      setReviewHistoryLoading(true)
+      try {
+        const { data } = await reviewApi.history(question.id)
+        setReviewHistory(data)
+      } catch {
+        // ignore
+      } finally {
+        setReviewHistoryLoading(false)
+      }
     }
   }
 
@@ -337,6 +361,42 @@ export default function QuestionDetailPage() {
           <div className="text-gray-700 whitespace-pre-wrap text-sm">{question.user_analysis}</div>
         </div>
       )}
+
+      {/* 复习历史 */}
+      <div className="bg-white rounded-xl p-4 shadow-sm">
+        <button onClick={toggleReviewHistory} className="flex items-center justify-between w-full text-left">
+          <span className="font-medium text-gray-700">📊 复习历史</span>
+          <span className="text-gray-400 transition-transform" style={{ transform: showReviewHistory ? 'rotate(180deg)' : '' }}>▼</span>
+        </button>
+        {showReviewHistory && (
+          <div className="border-t pt-3 mt-2">
+            {reviewHistoryLoading ? (
+              <div className="text-center py-4">
+                <div className="animate-spin text-2xl">⏳</div>
+              </div>
+            ) : reviewHistory.length === 0 ? (
+              <div className="text-center py-4 text-sm text-gray-400">暂无复习记录</div>
+            ) : (
+              <div className="space-y-2">
+                {reviewHistory.map((r: any) => {
+                  const qualityLabels = ['Again', 'Hard', 'Medium', 'Good', 'Very', 'Easy']
+                  const qualityColors = ['text-red-500', 'text-orange-500', 'text-amber-500', 'text-lime-500', 'text-green-500', 'text-teal-500']
+                  return (
+                    <div key={r.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                      <div className="text-xs text-gray-500">{new Date(r.review_date).toLocaleDateString()}</div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span>EF: {r.ef_before} → {r.ef_after}</span>
+                        <span>间隔: {r.interval_before}天 → {r.interval_after}天</span>
+                        <span className={`font-medium ${qualityColors[r.quality] || 'text-gray-500'}`}>{qualityLabels[r.quality] || r.quality}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="text-xs text-gray-400 text-center mt-4">
         创建于 {new Date(question.created_at).toLocaleString()}

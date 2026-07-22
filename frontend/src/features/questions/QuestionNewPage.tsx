@@ -149,12 +149,14 @@ export default function QuestionNewPage() {
   const removeQuestionImage = (index: number) => {
     const img = questionImages[index]
     if (img.blobUrl) URL.revokeObjectURL(img.blobUrl)
+    if (img.id) questionApi.deleteImage(img.id).catch(() => {})
     setQuestionImages((prev) => prev.filter((_, i) => i !== index))
   }
 
   const removeSolutionImage = (index: number) => {
     const img = solutionImages[index]
     if (img.blobUrl) URL.revokeObjectURL(img.blobUrl)
+    if (img.id) questionApi.deleteImage(img.id).catch(() => {})
     setSolutionImages((prev) => prev.filter((_, i) => i !== index))
   }
 

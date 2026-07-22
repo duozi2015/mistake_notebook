@@ -6,6 +6,7 @@ import {
   type ReportData,
   type ErrorTypeItem,
   type MasteryItem,
+  type HeatmapItem,
 } from '../../services/statistics'
 
 type PageState = 'loading' | 'loaded' | 'error' | 'empty'
@@ -16,15 +17,17 @@ export default function StatisticsPage() {
   const [trends, setTrends] = useState<TrendItem[]>([])
   const [report, setReport] = useState<ReportData | null>(null)
   const [mastery, setMastery] = useState<MasteryItem[]>([])
+  const [heatmapData, setHeatmapData] = useState<HeatmapItem[]>([])
 
   const fetchData = useCallback(async () => {
     setPageState('loading')
     try {
-      const [overviewRes, trendsRes, reportRes, masteryRes] = await Promise.allSettled([
+      const [overviewRes, trendsRes, reportRes, masteryRes, heatmapRes] = await Promise.allSettled([
         statisticsApi.overview(),
         statisticsApi.trends(),
         statisticsApi.report(),
         statisticsApi.mastery(),
+        statisticsApi.heatmap(),
       ])
 
       if (overviewRes.status !== 'fulfilled') {
@@ -43,6 +46,10 @@ export default function StatisticsPage() {
 
       if (masteryRes.status === 'fulfilled') {
         setMastery(masteryRes.value.data.data ?? [])
+      }
+
+      if (heatmapRes.status === 'fulfilled') {
+        setHeatmapData(heatmapRes.value.data.data ?? [])
       }
 
       setPageState('loaded')
@@ -251,6 +258,69 @@ export default function StatisticsPage() {
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Study heatmap ── */}
+      {heatmapData.length > 0 && (
+        <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
+          <h2 className="text-sm font-bold text-gray-800 mb-3">学习热力图（近30天）</h2>
+          {(() => {
+            // Build a day-of-week × hour grid
+            const dayNames = ['日', '一', '二', '三', '四', '五', '六']
+            const hourGroups = [
+              { label: '凌晨', hours: [0, 1, 2, 3, 4, 5] },
+              { label: '上午', hours: [6, 7, 8, 9, 10, 11] },
+              { label: '下午', hours: [12, 13, 14, 15, 16, 17] },
+              { label: '晚上', hours: [18, 19, 20, 21, 22, 23] },
+            ]
+            // Aggregate by day of week and hour group
+            const grid: Record<string, Record<string, number>> = {}
+            for (const d of dayNames) grid[d] = { '凌晨': 0, '上午': 0, '下午': 0, '晚上': 0 }
+            let maxCount = 0
+            for (const item of heatmapData) {
+              const date = new Date(item.date)
+              const dayName = dayNames[date.getDay()]
+              for (const g of hourGroups) {
+                if (g.hours.includes(item.hour)) {
+                  grid[dayName][g.label] += item.count
+                  maxCount = Math.max(maxCount, grid[dayName][g.label])
+                }
+              }
+            }
+            const getIntensity = (count: number) => {
+              if (count === 0) return 'bg-gray-50'
+              const ratio = count / (maxCount || 1)
+              if (ratio > 0.75) return 'bg-green-500'
+              if (ratio > 0.5) return 'bg-green-400'
+              if (ratio > 0.25) return 'bg-green-300'
+              return 'bg-green-200'
+            }
+            return (
+              <div>
+                <div className="flex items-center gap-1 text-xs text-gray-400 mb-2">
+                  <span className="w-5" />
+                  {hourGroups.map((g) => <span key={g.label} className="flex-1 text-center">{g.label}</span>)}
+                </div>
+                {dayNames.map((day) => (
+                  <div key={day} className="flex items-center gap-1 mb-1">
+                    <span className="w-5 text-xs text-gray-400 text-right">{day}</span>
+                    {hourGroups.map((g) => (
+                      <div
+                        key={g.label}
+                        className={`flex-1 h-8 rounded-md ${getIntensity(grid[day][g.label])} flex items-center justify-center`}
+                        title={`周${day} ${g.label}: ${grid[day][g.label]}次`}
+                      >
+                        {grid[day][g.label] > 0 && (
+                          <span className="text-[10px] font-medium text-white">{grid[day][g.label]}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
         </div>
       )}
 
