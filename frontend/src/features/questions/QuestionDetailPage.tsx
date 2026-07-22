@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { questionApi } from '../../services/questions'
 import { reviewApi } from '../../services/reviews'
+import { variantsApi } from '../../services/variants'
 import { useToastStore } from '../../stores/toastStore'
 import type { Question } from '../../types'
 import ImageViewer from '../../components/Shared/ImageViewer'
@@ -21,6 +22,9 @@ export default function QuestionDetailPage() {
   const [reviewHistory, setReviewHistory] = useState<any[]>([])
   const [showReviewHistory, setShowReviewHistory] = useState(false)
   const [reviewHistoryLoading, setReviewHistoryLoading] = useState(false)
+  const [variants, setVariants] = useState<Question[]>([])
+  const [variantsLoading, setVariantsLoading] = useState(false)
+  const [showVariants, setShowVariants] = useState(false)
   const [editForm, setEditForm] = useState({
     question_content: '',
     subject: '',
@@ -101,6 +105,26 @@ export default function QuestionDetailPage() {
         // ignore
       } finally {
         setReviewHistoryLoading(false)
+      }
+    }
+  }
+
+  const toggleVariants = async () => {
+    if (showVariants) {
+      setShowVariants(false)
+      return
+    }
+    if (!question) return
+    setShowVariants(true)
+    if (variants.length === 0) {
+      setVariantsLoading(true)
+      try {
+        const { data } = await variantsApi.getVariants(question.id)
+        setVariants(data.data)
+      } catch {
+        // ignore
+      } finally {
+        setVariantsLoading(false)
       }
     }
   }
@@ -392,6 +416,47 @@ export default function QuestionDetailPage() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 变式题推荐 */}
+      <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
+        <button onClick={toggleVariants} className="flex items-center justify-between w-full text-left">
+          <span className="font-medium text-gray-700">🔗 变式题推荐</span>
+          <span className="text-gray-400 transition-transform" style={{ transform: showVariants ? 'rotate(180deg)' : '' }}>▼</span>
+        </button>
+        {showVariants && (
+          <div className="border-t pt-3 mt-2">
+            {variantsLoading ? (
+              <div className="text-center py-4">
+                <div className="animate-spin text-2xl">⏳</div>
+              </div>
+            ) : variants.length === 0 ? (
+              <div className="text-center py-4 text-sm text-gray-400">暂无相似题目推荐</div>
+            ) : (
+              <div className="space-y-2">
+                {variants.map((v) => (
+                  <Link
+                    key={v.id}
+                    to={`/questions/${v.id}`}
+                    className="block p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs text-blue-600 font-medium">{v.subject || '未分类'}</span>
+                      <span className="text-xs text-gray-400">{'★'.repeat(v.difficulty)}{'☆'.repeat(5 - v.difficulty)}</span>
+                      {v.error_type && <span className="px-1.5 py-0.5 bg-red-50 text-red-500 rounded text-[10px]">{v.error_type}</span>}
+                    </div>
+                    <p className="text-sm text-gray-700 line-clamp-2">{v.question_content || '无题目内容'}</p>
+                    {v.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {v.tags.map((t) => <span key={t} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px]">{t}</span>)}
+                      </div>
+                    )}
+                  </Link>
+                ))}
               </div>
             )}
           </div>
