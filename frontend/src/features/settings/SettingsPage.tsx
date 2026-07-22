@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuthStore } from '../../stores/authStore'
 import { authApi } from '../../services/auth'
 import AdminPanel from './AdminPanel'
@@ -7,8 +7,19 @@ type UserState = 'loading' | 'loaded' | 'error'
 type PageState = 'idle' | 'passwordChanging' | 'passwordSuccess' | 'passwordError'
 
 export default function SettingsPage() {
-  const { user, logout } = useAuthStore()
-  const [userState] = useState<UserState>(user ? 'loaded' : 'loading')
+  const { user, setUser, logout } = useAuthStore()
+  const [userState, setUserState] = useState<UserState>(user ? 'loaded' : 'loading')
+
+  // 从后端获取用户信息
+  useEffect(() => {
+    if (!user) return
+    authApi.me()
+      .then(({ data }) => {
+        setUser(data)
+        setUserState('loaded')
+      })
+      .catch(() => setUserState(user ? 'loaded' : 'error'))
+  }, [])
 
   // Password change form state
   const [pageState, setPageState] = useState<PageState>('idle')
