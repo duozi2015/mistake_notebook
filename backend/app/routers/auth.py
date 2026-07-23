@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
@@ -56,7 +56,7 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
                 detail={"code": "INVITE_CODE_REQUIRED", "message": "当前为仅邀请码注册模式，请提供邀请码"},
             )
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         invite = (
             db.query(InviteCode)
             .filter(

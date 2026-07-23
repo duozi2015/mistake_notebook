@@ -3,7 +3,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.database import get_db
 from app.models import User, Question, Review
@@ -39,8 +39,7 @@ class ReviewHistoryItem(BaseModel):
     interval_before: int
     interval_after: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DailyReviewQuestion(BaseModel):
@@ -61,8 +60,7 @@ class DailyReviewQuestion(BaseModel):
     next_review_date: str | None
     urgency_score: float
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PaginatedDailyReviews(BaseModel):

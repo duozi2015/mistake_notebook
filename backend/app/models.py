@@ -1,7 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.database import Base
+
+
+def _utcnow():
+    """返回不带时区的当前 UTC 时间（替代已弃用的 _utcnow）"""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class User(Base):
@@ -11,8 +16,8 @@ class User(Base):
     username = Column(String(50), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     display_name = Column(String(100), default="")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     questions = relationship("Question", back_populates="user")
     reviews = relationship("Review", back_populates="user")
@@ -35,8 +40,8 @@ class Question(Base):
     current_interval = Column(Integer, default=0)
     current_rep_count = Column(Integer, default=0)
     next_review_date = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     user = relationship("User", back_populates="questions")
     images = relationship("QuestionImage", back_populates="question", cascade="all, delete-orphan")
@@ -55,7 +60,7 @@ class QuestionImage(Base):
     mime_type = Column(String(50), default="image/jpeg")
     image_type = Column(String(20), default="question")  # "question" or "solution"
     sort_order = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     question = relationship("Question", back_populates="images")
 
@@ -67,7 +72,7 @@ class QuestionTag(Base):
     id = Column(Integer, primary_key=True, index=True)
     question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False)
     tag_name = Column(String(50), nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     question = relationship("Question", back_populates="tags")
 
@@ -78,13 +83,13 @@ class Review(Base):
     id = Column(Integer, primary_key=True, index=True)
     question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    review_date = Column(DateTime, default=datetime.utcnow)
+    review_date = Column(DateTime, default=_utcnow)
     quality = Column(Integer, nullable=False)
     ef_before = Column(Float, default=2.5)
     ef_after = Column(Float, default=2.5)
     interval_before = Column(Integer, default=0)
     interval_after = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     question = relationship("Question", back_populates="reviews")
     user = relationship("User", back_populates="reviews")
@@ -96,7 +101,7 @@ class TokenBlacklist(Base):
     id = Column(Integer, primary_key=True, index=True)
     jti = Column(String(36), unique=True, index=True, nullable=False)
     expires_at = Column(DateTime, nullable=False)
-    blacklisted_at = Column(DateTime, default=datetime.utcnow)
+    blacklisted_at = Column(DateTime, default=_utcnow)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 
@@ -107,7 +112,7 @@ class ShareLink(Base):
     token = Column(String(64), unique=True, index=True, nullable=False)
     question_ids = Column(Text, default="[]")  # JSON array
     expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
 
@@ -118,7 +123,7 @@ class SystemConfig(Base):
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String(50), unique=True, nullable=False, index=True)
     value = Column(String(200), nullable=False, default="")
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 
 class InviteCode(Base):
@@ -130,4 +135,4 @@ class InviteCode(Base):
     expires_at = Column(DateTime, nullable=False)
     used = Column(Integer, default=0)  # 0=未使用, 1=已使用
     used_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)

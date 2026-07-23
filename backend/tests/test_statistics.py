@@ -2,7 +2,7 @@
 Tests for the statistics and knowledge mastery endpoints.
 """
 
-from datetime import datetime, timedelta, date
+from datetime import datetime, timezone, timedelta, date
 from unittest.mock import patch
 
 import pytest
@@ -64,7 +64,7 @@ def auth_headers(token):
 @pytest.fixture(scope="module")
 def seed_data(test_db, test_user):
     """Seed the database with questions, tags, and reviews for testing."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     uid = test_user.id
 
     # ── Questions ───────────────────────────────────────────────────

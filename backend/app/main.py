@@ -1,5 +1,6 @@
 import os
 import subprocess
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,7 +9,17 @@ from app.database import engine, Base
 from app.config import settings
 from app.routers import auth, questions, images, reviews, ocr, variants, export, statistics, admin
 
-app = FastAPI(title="智能错题本 API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动时：创建表 + 上传目录
+    Base.metadata.create_all(bind=engine)
+    os.makedirs("uploads/temp", exist_ok=True)
+    os.makedirs("uploads/questions", exist_ok=True)
+    yield
+
+
+app = FastAPI(title="智能错题本 API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,14 +39,6 @@ app.include_router(ocr.router)
 app.include_router(variants.router)
 app.include_router(export.router)
 app.include_router(admin.router)
-
-
-@app.on_event("startup")
-def startup():
-    Base.metadata.create_all(bind=engine)
-    # 确保上传目录存在
-    os.makedirs("uploads/temp", exist_ok=True)
-    os.makedirs("uploads/questions", exist_ok=True)
 
 
 def _get_git_commit():
