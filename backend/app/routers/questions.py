@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -180,7 +180,7 @@ def update_question(
         db.query(QuestionTag).filter(QuestionTag.question_id == q.id).delete()
         for tag_name in data.tags:
             db.add(QuestionTag(question_id=q.id, tag_name=tag_name))
-    q.updated_at = datetime.utcnow()
+    q.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
     db.refresh(q)
     return _question_to_response(q)

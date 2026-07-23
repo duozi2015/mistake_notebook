@@ -1,6 +1,6 @@
 import secrets
 import string
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -34,7 +34,7 @@ def _generate_invite_code() -> str:
 
 def _get_or_create_invite_code(db: Session) -> InviteCode:
     """获取当前有效邀请码，若过期或不存在则自动生成新码"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # 查找当前有效的未使用邀请码
     active_code = (
@@ -79,7 +79,7 @@ def _get_registration_mode(db: Session) -> str:
 
 
 def _invite_code_to_response(code: InviteCode) -> InviteCodeResponse:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     remaining = max(0, int((code.expires_at - now).total_seconds()))
     return InviteCodeResponse(
         code=code.code,
@@ -117,7 +117,7 @@ def update_registration_mode(
     )
     if config:
         config.value = data.mode
-        config.updated_at = datetime.utcnow()
+        config.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     else:
         config = SystemConfig(key="registration_mode", value=data.mode)
         db.add(config)
@@ -137,7 +137,7 @@ def refresh_invite_code(
 ):
     """强制刷新邀请码（旧码失效，生成新码）"""
     # 将当前所有未使用的邀请码标记为已使用
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     db.query(InviteCode).filter(
         InviteCode.used == 0,
         InviteCode.expires_at > now,

@@ -226,7 +226,7 @@ def create_share_link(
         )
 
     token = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(hours=data.expire_hours)
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=data.expire_hours)
 
     share_link = ShareLink(
         token=token,

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 # === 用户相关 ===
@@ -21,8 +21,7 @@ class UserResponse(BaseModel):
     username: str
     display_name: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TokenResponse(BaseModel):
@@ -50,8 +49,7 @@ class ImageResponse(BaseModel):
     file_size: int
     image_type: str = "question"
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # === 错题相关 ===
@@ -98,8 +96,7 @@ class QuestionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # === 分页 ===
