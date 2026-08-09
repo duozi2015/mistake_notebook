@@ -46,11 +46,11 @@ def upload_image(
         )
     ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "jpg"
     filename = f"{uuid.uuid4().hex}_{int(time.time())}.{ext}"
-    filepath = os.path.join(TEMP_DIR, filename)
+    filepath = os.path.join(QUESTIONS_DIR, filename)
     with open(filepath, "wb") as f:
         f.write(contents)
     img = QuestionImage(
-        file_path=f"/uploads/temp/{filename}",
+        file_path=f"/uploads/questions/{filename}",
         original_name=file.filename,
         file_size=len(contents),
         mime_type=file.content_type,
