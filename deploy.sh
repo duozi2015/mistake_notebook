@@ -1,9 +1,10 @@
 #!/bin/bash
 # 智能错题本 - 一键部署脚本（含家长作业打卡模块）
-# 安全流程：① 部署前备份数据库 → ② 构建前端 → ③ 停止旧后端 → ④ 显式数据库升级(增量/幂等/非破坏) → ⑤ 启动后端 → ⑥ 启动 nginx
+# 安全流程：① 部署前备份数据库 → ② 构建前端 → ③ 停止旧后端 → ④ 显式数据库升级(增量/幂等/非破坏) → ⑤ 启动后端+健康检查 → ⑥ 启动 nginx
+# 生产环境若路径不同：MISTAKE_NOTEBOOK_DIR=/实际/路径 ./deploy.sh
 set -e
 
-PROJECT_DIR="/Users/doudou_files/claude/mistake_notebook"
+PROJECT_DIR="${MISTAKE_NOTEBOOK_DIR:-/Users/doudou_files/claude/mistake_notebook}"
 cd "$PROJECT_DIR"
 export $(grep -v '^#' .env 2>/dev/null | xargs)
 
@@ -12,6 +13,7 @@ export DYLD_LIBRARY_PATH="/opt/homebrew/Cellar/expat/2.8.2/lib:$DYLD_LIBRARY_PAT
 
 DB_PATH="$PROJECT_DIR/backend/data/mistake_notebook.db"
 BACKUP_DIR="$PROJECT_DIR/backend/data/backups"
+HOST_PORT=8000
 
 echo "=== 0. 创建日志目录 ==="
 mkdir -p "$PROJECT_DIR/backend/logs"
@@ -36,7 +38,7 @@ npm run build
 cd "$PROJECT_DIR"
 
 echo "=== 2. 停止旧后端 ==="
-kill $(lsof -ti:8000) 2>/dev/null || true
+kill $(lsof -ti:$HOST_PORT) 2>/dev/null || true
 sleep 1
 
 echo "=== 3. 数据库升级（增量、幂等、非破坏，不影响存量数据） ==="
@@ -44,7 +46,6 @@ cd "$PROJECT_DIR/backend"
 source venv/bin/activate 2>/dev/null || (python3 -m venv venv && source venv/bin/activate)
 pip install --upgrade pip -q
 pip install -r requirements.txt -q
-pip install bcrypt==4.0.1 httpx2 pytest -q
 
 # 3.1 数据库完整性预检
 echo "--- 数据库完整性预检 ---"
@@ -79,9 +80,25 @@ else
 fi
 
 echo "=== 4. 启动后端 ==="
-nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > "$PROJECT_DIR/backend/logs/access.log" 2>&1 &
+nohup uvicorn app.main:app --host 0.0.0.0 --port "$HOST_PORT" > "$PROJECT_DIR/backend/logs/access.log" 2>&1 &
 BACKEND_PID=$!
 echo "后端 PID: $BACKEND_PID"
+
+echo "=== 4.5 后端健康检查 ==="
+HEALTH_OK=""
+for i in $(seq 1 20); do
+    sleep 1
+    if curl -sf "http://127.0.0.1:$HOST_PORT/api/v1/auth/health" > /dev/null 2>&1; then
+        HEALTH_OK="yes"
+        break
+    fi
+done
+if [ "$HEALTH_OK" = "yes" ]; then
+    echo "✅ 后端健康检查通过"
+else
+    echo "❌ 后端未通过健康检查，请查看日志: backend/logs/access.log"
+    exit 1
+fi
 
 echo "=== 5. 启动 Nginx ==="
 nginx -t 2>/dev/null && nginx 2>/dev/null || echo "nginx 已在运行或无需启动"
@@ -89,6 +106,6 @@ nginx -t 2>/dev/null && nginx 2>/dev/null || echo "nginx 已在运行或无需�
 echo ""
 echo "✅ 部署完成！"
 echo "前端访问: http://localhost:2530"
-echo "后端 API: http://localhost:8000"
-echo "API 文档: http://localhost:8000/docs"
+echo "后端 API: http://localhost:$HOST_PORT"
+echo "API 文档: http://localhost:$HOST_PORT/docs"
 echo "部署备份位于: $BACKUP_DIR"
