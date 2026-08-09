@@ -15,20 +15,51 @@ DB_PATH="$PROJECT_DIR/backend/data/mistake_notebook.db"
 BACKUP_DIR="$PROJECT_DIR/backend/data/backups"
 HOST_PORT=8000
 
+# 解析数据库方言（.env 的 DATABASE_URL）
+DB_URL=$(grep '^DATABASE_URL=' "$PROJECT_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"')
+if [[ "$DB_URL" == mysql* ]]; then
+    DB_KIND="mysql"
+    eval "$(python3 - "$DB_URL" <<'PY'
+import sys, urllib.parse
+u = sys.argv[1].split("://", 1)[1]
+auth, rest = u.split("@", 1)
+user = urllib.parse.unquote(auth.split(":", 1)[0])
+passwd = urllib.parse.unquote(auth.split(":", 1)[1]) if ":" in auth else ""
+hostport, db = rest.split("/", 1)
+host = hostport.split(":", 1)[0]
+port = hostport.split(":", 1)[1] if ":" in hostport else "3306"
+print(f"DB_USER={user!r}")
+print(f"DB_PASS={passwd!r}")
+print(f"DB_HOST={host!r}")
+print(f"DB_PORT={port!r}")
+print(f"DB_NAME={db!r}")
+PY
+)"
+else
+    DB_KIND="sqlite"
+fi
+echo "数据库方言: $DB_KIND"
+
 echo "=== 0. 创建日志目录 ==="
 mkdir -p "$PROJECT_DIR/backend/logs"
 
-echo "=== 0.5 备份数据库（部署前，安全在线备份，不影响正在运行的服务） ==="
-if [ -f "$DB_PATH" ]; then
-    mkdir -p "$BACKUP_DIR"
-    STAMP=$(date +%Y%m%d_%H%M%S)
+echo "=== 0.5 备份数据库（部署前，安全备份，不影响正在运行的服务） ==="
+mkdir -p "$BACKUP_DIR"
+STAMP=$(date +%Y%m%d_%H%M%S)
+if [ "$DB_KIND" = "mysql" ]; then
+    mysqldump --single-transaction -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" > "$BACKUP_DIR/deploy_$STAMP.sql"
+    echo "✅ 已备份: deploy_$STAMP.sql"
+elif [ -f "$DB_PATH" ]; then
     sqlite3 "$DB_PATH" ".backup '$BACKUP_DIR/deploy_$STAMP.db'"
     echo "✅ 已备份: deploy_$STAMP.db"
-    # 部署备份保留最近 15 份，第 16 份起删除最旧
-    ls -1t "$BACKUP_DIR"/deploy_*.db 2>/dev/null | tail -n +16 | xargs -r rm -f || true
-    echo "   部署备份当前保留 $(ls -1 "$BACKUP_DIR"/deploy_*.db 2>/dev/null | wc -l | tr -d ' ') 份"
 else
+    STAMP=""
     echo "⚠️ 未找到数据库，跳过备份（首次部署）"
+fi
+if [ -n "$STAMP" ]; then
+    # 部署备份保留最近 15 份，第 16 份起删除最旧
+    ls -1t "$BACKUP_DIR"/deploy_*.db "$BACKUP_DIR"/deploy_*.sql 2>/dev/null | tail -n +16 | xargs -r rm -f || true
+    echo "   部署备份当前保留 $(ls -1 "$BACKUP_DIR"/deploy_*.db "$BACKUP_DIR"/deploy_*.sql 2>/dev/null | wc -l | tr -d ' ') 份"
 fi
 
 echo "=== 1. 构建前端 ==="
@@ -49,15 +80,24 @@ pip install -r requirements.txt -q
 
 # 3.1 数据库完整性预检
 echo "--- 数据库完整性预检 ---"
-CHK=$(sqlite3 "$DB_PATH" "PRAGMA integrity_check;" 2>/dev/null | head -1)
-echo "integrity_check: ${CHK:-文件不存在或非数据库}"
+if [ "$DB_KIND" = "mysql" ]; then
+    CHK=$(mysql -N -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "CHECK TABLE \`$DB_NAME\`.users" 2>/dev/null | head -1)
+else
+    CHK=$(sqlite3 "$DB_PATH" "PRAGMA integrity_check;" 2>/dev/null | head -1)
+fi
+echo "完整性检查: ${CHK:-无法执行（数据库不可达或首次部署）}"
 
 # 3.2 记录迁移前存量用户数（验证升级不丢失数据）
-if [ -f "$DB_PATH" ]; then
-    BEFORE=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo "表不存在")
-else
-    BEFORE="表不存在"
-fi
+db_count_users() {
+    if [ "$DB_KIND" = "mysql" ]; then
+        mysql -N -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "SELECT COUNT(*) FROM \`$DB_NAME\`.users" 2>/dev/null || echo "表不存在"
+    elif [ -f "$DB_PATH" ]; then
+        sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo "表不存在"
+    else
+        echo "表不存在"
+    fi
+}
+BEFORE=$(db_count_users)
 echo "迁移前 users 行数: $BEFORE"
 
 # 3.3 执行迁移（create_all 新表 + ALTER 存量表加列，均幂等）
@@ -69,7 +109,7 @@ print("迁移完成。本次新增列:", applied if applied else "无（库已�
 PY
 
 # 3.4 校验迁移后存量数据未受影响
-AFTER=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo "表不存在")
+AFTER=$(db_count_users)
 echo "迁移后 users 行数: $AFTER"
 if [ "$BEFORE" = "$AFTER" ] && [ "$BEFORE" != "表不存在" ]; then
     echo "✅ 存量用户数未变化（$BEFORE），升级未影响现有数据"
