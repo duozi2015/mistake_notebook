@@ -3,6 +3,7 @@
 from datetime import date, datetime, timedelta
 
 import pytest
+from sqlalchemy import text
 from fastapi.testclient import TestClient
 
 from app.database import Base, engine, SessionLocal
@@ -27,8 +28,10 @@ def client(test_db):
 
 @pytest.fixture
 def env(test_db, client):
+    test_db.execute(text("SET FOREIGN_KEY_CHECKS=0"))
     for m in (Review, TaskInstance, Question, FamilyBinding, User):
         test_db.query(m).delete()
+    test_db.execute(text("SET FOREIGN_KEY_CHECKS=1"))
     test_db.commit()
     parent = User(username="ac_parent", password_hash="x", role="parent")
     student = User(username="ac_student", password_hash="x", role="student")
@@ -38,14 +41,17 @@ def env(test_db, client):
         test_db.refresh(u)
     test_db.add(FamilyBinding(parent_id=parent.id, student_id=student.id, status="active"))
     test_db.commit()
+    # 用全新会话返回，避免 MySQL 陈旧快照
+    db = SessionLocal()
 
     def headers(u):
         return {"Authorization": f"Bearer {create_access_token(u)[0]}"}
 
-    return {
-        "client": client, "db": test_db, "parent": parent, "student": student,
+    yield {
+        "client": client, "db": db, "parent": parent, "student": student,
         "ph": headers(parent), "sh": headers(student),
     }
+    db.close()
 
 
 def _approved(db, student_id, d, created_by=None, rating=None, reviewed_by=None):
@@ -103,10 +109,14 @@ def test_student_stars_and_self(env):
 
 
 def test_student_review_streak(env):
+    q = Question(user_id=env["student"].id, question_content="复习用题", status="active")
+    env["db"].add(q)
+    env["db"].commit()
+    env["db"].refresh(q)
     base = date(2026, 8, 1)
     for i in range(7):
         env["db"].add(Review(
-            user_id=env["student"].id, question_id=1,
+            user_id=env["student"].id, question_id=q.id,
             review_date=datetime.combine(base + timedelta(days=i), datetime.min.time()),
             quality=3,
         ))

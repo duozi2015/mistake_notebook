@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     DB_TEST_NAME: str = "mistake_test"
     DB_TEST_USER: str = "mistake_test"
     DB_TEST_PASSWORD: str = ""
+    # 自动化测试库（pytest 专用，独立于 mistake_test）
+    DB_AUTOTEST_HOST: str = ""
+    DB_AUTOTEST_PORT: int = 3306
+    DB_AUTOTEST_NAME: str = "mistake_autotest"
+    DB_AUTOTEST_USER: str = "mistake_autotest"
+    DB_AUTOTEST_PASSWORD: str = ""
 
     model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_file_encoding="utf-8")
 

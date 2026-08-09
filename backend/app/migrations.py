@@ -30,6 +30,6 @@ def run_migrations(engine) -> list[str]:
         for table, column, ddl in COLUMN_MIGRATIONS:
             cols = [c["name"] for c in insp.get_columns(table)]
             if column not in cols:
-                conn.exec_driver_sql(f'ALTER TABLE "{table}" ADD COLUMN {column} {ddl}')
+                conn.exec_driver_sql(f"ALTER TABLE `{table}` ADD COLUMN `{column}` {ddl}")
                 applied.append(f"{table}.{column}")
     return applied
