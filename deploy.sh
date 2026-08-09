@@ -42,11 +42,16 @@ PY
 )"
 echo "数据库: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
 
-echo "=== 0.6 确保数据库存在（全新生产库自动建库） ==="
-if mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4" 2>/dev/null; then
-    echo "✅ 数据库就绪（不存在则已创建）"
+echo "=== 0.6 校验数据库（库已存在，部署只需建表，不创建库） ==="
+if ! mysqladmin ping -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" --silent 2>/dev/null; then
+    echo "❌ 无法连接 MySQL（$DB_HOST:$DB_PORT），请检查服务与网络"
+    exit 1
+fi
+if mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "USE \`$DB_NAME\`" 2>/dev/null; then
+    echo "✅ 数据库 $DB_NAME 存在，可连接"
 else
-    echo "⚠️ 自动建库失败（账号可能无权限），请确认 $DB_NAME 已存在后继续"
+    echo "❌ 数据库 $DB_NAME 不存在或账号无权限，请先在 MySQL 创建该库"
+    exit 1
 fi
 
 echo "=== 0.7 备份数据库（部署前，mysqldump 一致性备份） ==="
