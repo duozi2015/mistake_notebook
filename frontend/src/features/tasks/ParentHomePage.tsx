@@ -110,10 +110,10 @@ export default function ParentHomePage() {
               </div>
               <div className="grid grid-cols-4 gap-2 text-center">
                 {[
-                  { label: '待完成', v: sel.pending, c: 'text-gray-600', to: '/parent/tasks' },
+                  { label: '待完成', v: sel.pending, c: 'text-gray-600', to: '/parent/tasks?status=pending' },
                   { label: '待检查', v: sel.submitted, c: 'text-orange-600', to: '/parent/review' },
-                  { label: '需修改', v: sel.rejected, c: 'text-red-600', to: '/parent/tasks' },
-                  { label: '已完成', v: sel.approved, c: 'text-green-600', to: '/parent/tasks' },
+                  { label: '需修改', v: sel.rejected, c: 'text-red-600', to: '/parent/tasks?status=rejected' },
+                  { label: '已完成', v: sel.approved, c: 'text-green-600', to: '/parent/tasks?status=approved' },
                 ].map((it) => (
                   <button key={it.label} onClick={() => navigate(it.to)} className="py-2 bg-gray-50 rounded-xl active:bg-gray-100">
                     <div className={`text-lg font-bold ${it.c}`}>{it.v}</div>
