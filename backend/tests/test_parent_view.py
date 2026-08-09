@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import text
 from fastapi.testclient import TestClient
 
 from app.database import Base, engine, SessionLocal
@@ -27,9 +28,11 @@ def client(test_db):
 
 @pytest.fixture
 def env(test_db, client):
+    test_db.execute(text("SET FOREIGN_KEY_CHECKS=0"))
     test_db.query(Question).delete()
     test_db.query(FamilyBinding).delete()
     test_db.query(User).delete()
+    test_db.execute(text("SET FOREIGN_KEY_CHECKS=1"))
     test_db.commit()
     parent = User(username="pv_parent", password_hash="x", role="parent")
     student = User(username="pv_student", password_hash="x", role="student")
@@ -56,14 +59,17 @@ def env(test_db, client):
     )
     test_db.add_all([due, later, other_q])
     test_db.commit()
+    # 用全新会话返回，避免 MySQL 陈旧快照
+    db = SessionLocal()
 
     def headers(u):
         return {"Authorization": f"Bearer {create_access_token(u)[0]}"}
 
-    return {
-        "client": client, "db": test_db, "parent": parent, "student": student, "other": other,
+    yield {
+        "client": client, "db": db, "parent": parent, "student": student, "other": other,
         "ph": headers(parent), "sh": headers(student), "oh": headers(other),
     }
+    db.close()
 
 
 def test_parent_lists_child_questions(env):

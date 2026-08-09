@@ -1,6 +1,7 @@
 """家庭绑定 API 测试：多对多两步绑定（发起→确认→生效）。"""
 
 import pytest
+from sqlalchemy import text
 from fastapi.testclient import TestClient
 
 from app.database import Base, engine, SessionLocal
@@ -26,8 +27,10 @@ def client(test_db):
 @pytest.fixture
 def env(test_db, client):
     """隔离环境：清空用户/绑定后新建 家长、学生、另一个学生。"""
+    test_db.execute(text("SET FOREIGN_KEY_CHECKS=0"))
     test_db.query(FamilyBinding).delete()
     test_db.query(User).delete()
+    test_db.execute(text("SET FOREIGN_KEY_CHECKS=1"))
     test_db.commit()
     parent = User(username="papa", password_hash="x", display_name="爸爸", role="parent")
     student = User(username="kid", password_hash="x", display_name="小明", role="student")
@@ -36,13 +39,15 @@ def env(test_db, client):
     test_db.commit()
     for u in (parent, student, other):
         test_db.refresh(u)
+    # 用全新会话返回，避免 MySQL 陈旧快照
+    db = SessionLocal()
 
     def headers(u):
         return {"Authorization": f"Bearer {create_access_token(u)[0]}"}
 
-    return {
+    yield {
         "client": client,
-        "db": test_db,
+        "db": db,
         "parent": parent,
         "student": student,
         "other": other,
@@ -50,6 +55,7 @@ def env(test_db, client):
         "sh": headers(student),
         "oh": headers(other),
     }
+    db.close()
 
 
 def test_bind_student_creates_pending(env):

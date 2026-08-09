@@ -3,6 +3,7 @@
 from datetime import date, timedelta
 
 import pytest
+from sqlalchemy import text
 from fastapi.testclient import TestClient
 
 from app.database import Base, engine, SessionLocal
@@ -38,8 +39,10 @@ def client(test_db):
 @pytest.fixture
 def env(test_db, client, monkeypatch):
     """清空相关表，建 家长+学生+另一学生，绑定生效；today 固定为 2026-08-10。"""
-    for m in (TaskImage, TaskInstance, TaskTemplate, FamilyBinding, User):
+    test_db.execute(text("SET FOREIGN_KEY_CHECKS=0"))
+    for m in (TaskImage, TaskInstance, TaskTemplate, FamilyBinding, Question, User):
         test_db.query(m).delete()
+    test_db.execute(text("SET FOREIGN_KEY_CHECKS=1"))
     test_db.commit()
     parent = User(username="papa_t", password_hash="x", role="parent")
     student = User(username="kid_t", password_hash="x", role="student")
@@ -51,13 +54,15 @@ def env(test_db, client, monkeypatch):
     test_db.add(FamilyBinding(parent_id=parent.id, student_id=student.id, status="active"))
     test_db.commit()
     monkeypatch.setattr(task_generation, "local_today", lambda: TODAY)
+    # 用全新会话返回，避免 MySQL REPEATABLE READ 陈旧快照看不到 API 提交的数据
+    db = SessionLocal()
 
     def headers(u):
         return {"Authorization": f"Bearer {create_access_token(u)[0]}"}
 
-    return {
+    yield {
         "client": client,
-        "db": test_db,
+        "db": db,
         "parent": parent,
         "student": student,
         "other": other,
@@ -65,6 +70,7 @@ def env(test_db, client, monkeypatch):
         "sh": headers(student),
         "oh": headers(other),
     }
+    db.close()
 
 
 def _mk_task(env, student_id, name="作业", d=None, category="learning", **kw):

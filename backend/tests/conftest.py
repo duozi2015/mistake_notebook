@@ -1,16 +1,12 @@
-"""测试隔离：自动化测试使用「独立 MySQL 临时库」，绝不影响开发/生产数据。
+"""测试隔离：自动化测试使用专用 MySQL 库 mistake_autotest，绝不影响开发/生产数据。
 
-历史教训：测试模块的 drop_all 曾清空共享库导致数据丢失。
-本文件在 pytest 收集前创建一次性临时库（mistake_test_tmp_<随机>），
-测试的建表/清表只影响该临时库，结束后自动删除。
-
-前提：mistake_test 账号需有 CREATE/DROP DATABASE 权限，否则报错并给出授权命令。
+- 开发/生产库：mistake_test / mistake_prod —— pytest 不触碰。
+- mistake_autotest 为 pytest 专用，可随意建表/清表；会话开始先清空一次保证干净。
 """
-import atexit
 import os
-import random
-import string
 from pathlib import Path
+
+import pytest
 
 
 def _load_env(key: str, default: str = "") -> str:
@@ -27,51 +23,21 @@ def _load_env(key: str, default: str = "") -> str:
     return default
 
 
-DB_HOST = _load_env("DB_TEST_HOST", "127.0.0.1")
-DB_PORT = int(_load_env("DB_TEST_PORT", "3306"))
-DB_USER = _load_env("DB_TEST_USER", "mistake_test")
-DB_PASS = _load_env("DB_TEST_PASSWORD", "")
+DB_HOST = _load_env("DB_AUTOTEST_HOST", "127.0.0.1")
+DB_PORT = int(_load_env("DB_AUTOTEST_PORT", "3306"))
+DB_NAME = _load_env("DB_AUTOTEST_NAME", "mistake_autotest")
+DB_USER = _load_env("DB_AUTOTEST_USER", "mistake_autotest")
+DB_PASS = _load_env("DB_AUTOTEST_PASSWORD", "")
 
-SUFFIX = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
-TEST_DB = f"mistake_test_tmp_{SUFFIX}"
-
-import pymysql  # noqa: E402
-
-
-def _connect(autocommit: bool = True):
-    conn = pymysql.connect(
-        host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASS,
-        connect_timeout=10, autocommit=autocommit,
-    )
-    return conn
-
-
-try:
-    conn = _connect()
-    with conn.cursor() as cur:
-        cur.execute(f"CREATE DATABASE `{TEST_DB}` CHARACTER SET utf8mb4")
-    conn.close()
-except Exception as e:  # noqa: BLE001
-    raise SystemExit(
-        f"\n❌ 无法创建测试数据库 {TEST_DB}：{e}\n"
-        "请在 Mac mini 的 MySQL 上为测试账号授权创建临时库，然后重跑：\n"
-        "  GRANT ALL PRIVILEGES ON `mistake_test_tmp_%`.* TO 'mistake_test'@'192.168.3.%';\n"
-        "  FLUSH PRIVILEGES;\n"
-    ) from e
-
-
-@atexit.register
-def _cleanup():
-    try:
-        conn = _connect()
-        with conn.cursor() as cur:
-            cur.execute(f"DROP DATABASE IF EXISTS `{TEST_DB}`")
-        conn.close()
-    except Exception:  # noqa: BLE001
-        pass
-
-
-# 让 app 连接一次性临时库
+# 让 app 连接专用自动化测试库
 os.environ["DATABASE_URL"] = (
-    f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{TEST_DB}"
+    f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _clean_session_db():
+    """会话开始时清空自动化测试库，保证每次跑测试从干净状态开始。"""
+    from app.database import Base, engine
+    Base.metadata.drop_all(bind=engine)
+    yield
