@@ -1,5 +1,7 @@
+import logging
 import os
 import subprocess
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +11,21 @@ from app.database import engine
 from app.config import settings
 from app.migrations import run_migrations
 from app.routers import auth, questions, images, reviews, ocr, variants, export, statistics, admin, family, tasks, achievements
+
+
+def _setup_local_time_logging():
+    """确保后端日志时间使用机器的系统时间（本地时区），而非默认 UTC/无时间戳。"""
+    logging.Formatter.converter = time.localtime
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        logger = logging.getLogger(name)
+        for h in logger.handlers:
+            h.setFormatter(logging.Formatter(
+                "%(asctime)s %(levelname)s %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            ))
+
+
+_setup_local_time_logging()
 
 
 @asynccontextmanager

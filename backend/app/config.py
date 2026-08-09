@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24h
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080  # 7d
-    # 显式指定数据库时优先（如本地 SQLite 开发）；留空则按机器环境自动选择 MySQL 生产/测试库
+    # 显式指定数据库 URL 时优先；留空则按机器环境自动选择 MySQL 生产/测试库
     DATABASE_URL: str = ""
     # 运行环境：production / development；留空则按主机名推断（与 /health 一致）
     APP_ENV: str = ""
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    # 生产库（Mac mini 本地）
+    # 生产库（Mac mini 本地，仅内网）
     DB_PROD_HOST: str = "127.0.0.1"
     DB_PROD_PORT: int = 3306
     DB_PROD_NAME: str = "mistake_prod"

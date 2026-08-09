@@ -1,6 +1,6 @@
 #!/bin/bash
-# 智能错题本 - 一键部署脚本（含家长作业打卡模块）
-# 安全流程：① 部署前备份数据库 → ② 构建前端 → ③ 停止旧后端 → ④ 显式数据库升级(增量/幂等/非破坏) → ⑤ 启动后端+健康检查 → ⑥ 启动 nginx
+# 智能错题本 - 一键部署脚本（MySQL 专用）
+# 流程：① 确保数据库存在 → ② 部署前备份 → ③ 构建前端 → ④ 停止旧后端 → ⑤ 数据库升级(建表/加列) → ⑥ 启动后端+健康检查 → ⑦ nginx
 # 生产环境若路径不同：MISTAKE_NOTEBOOK_DIR=/实际/路径 ./deploy.sh
 set -e
 
@@ -11,15 +11,20 @@ export $(grep -v '^#' .env 2>/dev/null | xargs)
 # Fix expat compatibility issue on macOS with Python 3.12
 export DYLD_LIBRARY_PATH="/opt/homebrew/Cellar/expat/2.8.2/lib:$DYLD_LIBRARY_PATH"
 
-DB_PATH="$PROJECT_DIR/backend/data/mistake_notebook.db"
 BACKUP_DIR="$PROJECT_DIR/backend/data/backups"
 HOST_PORT=8000
 
-# 解析数据库方言（.env 的 DATABASE_URL）
-DB_URL=$(grep '^DATABASE_URL=' "$PROJECT_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"')
-if [[ "$DB_URL" == mysql* ]]; then
-    DB_KIND="mysql"
-    eval "$(python3 - "$DB_URL" <<'PY'
+echo "=== 0. 创建日志目录 ==="
+mkdir -p "$PROJECT_DIR/backend/logs"
+
+echo "=== 0.5 解析实际 MySQL 连接（与 app 一致：按机器环境选生产/测试库） ==="
+cd "$PROJECT_DIR/backend"
+source venv/bin/activate 2>/dev/null || (python3 -m venv venv && source venv/bin/activate)
+pip install --upgrade pip -q
+pip install -r requirements.txt -q
+
+DB_URL=$(venv/bin/python -c "from app.config import settings; print(settings.resolved_database_url())")
+eval "$(venv/bin/python - "$DB_URL" <<'PY'
 import sys, urllib.parse
 u = sys.argv[1].split("://", 1)[1]
 auth, rest = u.split("@", 1)
@@ -35,31 +40,27 @@ print(f"DB_PORT={port!r}")
 print(f"DB_NAME={db!r}")
 PY
 )"
+echo "数据库: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
+
+echo "=== 0.6 确保数据库存在（全新生产库自动建库） ==="
+if mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4" 2>/dev/null; then
+    echo "✅ 数据库就绪（不存在则已创建）"
 else
-    DB_KIND="sqlite"
+    echo "⚠️ 自动建库失败（账号可能无权限），请确认 $DB_NAME 已存在后继续"
 fi
-echo "数据库方言: $DB_KIND"
 
-echo "=== 0. 创建日志目录 ==="
-mkdir -p "$PROJECT_DIR/backend/logs"
-
-echo "=== 0.5 备份数据库（部署前，安全备份，不影响正在运行的服务） ==="
+echo "=== 0.7 备份数据库（部署前，mysqldump 一致性备份） ==="
 mkdir -p "$BACKUP_DIR"
 STAMP=$(date +%Y%m%d_%H%M%S)
-if [ "$DB_KIND" = "mysql" ]; then
-    mysqldump --single-transaction -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" > "$BACKUP_DIR/deploy_$STAMP.sql"
+if mysqldump --single-transaction --default-character-set=utf8mb4 \
+    -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" \
+    > "$BACKUP_DIR/deploy_$STAMP.sql" 2>/dev/null; then
     echo "✅ 已备份: deploy_$STAMP.sql"
-elif [ -f "$DB_PATH" ]; then
-    sqlite3 "$DB_PATH" ".backup '$BACKUP_DIR/deploy_$STAMP.db'"
-    echo "✅ 已备份: deploy_$STAMP.db"
+    # 部署备份保留最近 15 份
+    ls -1t "$BACKUP_DIR"/deploy_*.sql 2>/dev/null | tail -n +16 | xargs -r rm -f || true
+    echo "   当前保留 $(ls -1 "$BACKUP_DIR"/deploy_*.sql 2>/dev/null | wc -l | tr -d ' ') 份"
 else
-    STAMP=""
-    echo "⚠️ 未找到数据库，跳过备份（首次部署）"
-fi
-if [ -n "$STAMP" ]; then
-    # 部署备份保留最近 15 份，第 16 份起删除最旧
-    ls -1t "$BACKUP_DIR"/deploy_*.db "$BACKUP_DIR"/deploy_*.sql 2>/dev/null | tail -n +16 | xargs -r rm -f || true
-    echo "   部署备份当前保留 $(ls -1 "$BACKUP_DIR"/deploy_*.db "$BACKUP_DIR"/deploy_*.sql 2>/dev/null | wc -l | tr -d ' ') 份"
+    echo "⚠️ 备份失败（全新库可能暂无权限），继续部署"
 fi
 
 echo "=== 1. 构建前端 ==="
@@ -72,49 +73,28 @@ echo "=== 2. 停止旧后端 ==="
 kill $(lsof -ti:$HOST_PORT) 2>/dev/null || true
 sleep 1
 
-echo "=== 3. 数据库升级（增量、幂等、非破坏，不影响存量数据） ==="
+echo "=== 3. 数据库升级（建表/加列，增量幂等非破坏） ==="
 cd "$PROJECT_DIR/backend"
-source venv/bin/activate 2>/dev/null || (python3 -m venv venv && source venv/bin/activate)
-pip install --upgrade pip -q
-pip install -r requirements.txt -q
+echo "--- 完整性预检 ---"
+CHK=$(mysql -N -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "CHECK TABLE \`$DB_NAME\`.users" 2>/dev/null | head -1)
+echo "完整性检查: ${CHK:-表不存在（全新库，将创建）}"
 
-# 3.1 数据库完整性预检
-echo "--- 数据库完整性预检 ---"
-if [ "$DB_KIND" = "mysql" ]; then
-    CHK=$(mysql -N -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "CHECK TABLE \`$DB_NAME\`.users" 2>/dev/null | head -1)
-else
-    CHK=$(sqlite3 "$DB_PATH" "PRAGMA integrity_check;" 2>/dev/null | head -1)
-fi
-echo "完整性检查: ${CHK:-无法执行（数据库不可达或首次部署）}"
-
-# 3.2 记录迁移前存量用户数（验证升级不丢失数据）
-db_count_users() {
-    if [ "$DB_KIND" = "mysql" ]; then
-        mysql -N -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "SELECT COUNT(*) FROM \`$DB_NAME\`.users" 2>/dev/null || echo "表不存在"
-    elif [ -f "$DB_PATH" ]; then
-        sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo "表不存在"
-    else
-        echo "表不存在"
-    fi
-}
-BEFORE=$(db_count_users)
+BEFORE=$(mysql -N -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "SELECT COUNT(*) FROM \`$DB_NAME\`.users" 2>/dev/null || echo "表不存在")
 echo "迁移前 users 行数: $BEFORE"
 
-# 3.3 执行迁移（create_all 新表 + ALTER 存量表加列，均幂等）
 python - <<'PY'
 from app.database import engine
 from app.migrations import run_migrations
 applied = run_migrations(engine)
-print("迁移完成。本次新增列:", applied if applied else "无（库已是最新）")
+print("迁移完成。本次变更:", applied if applied else "无（库已是最新）")
 PY
 
-# 3.4 校验迁移后存量数据未受影响
-AFTER=$(db_count_users)
+AFTER=$(mysql -N -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "SELECT COUNT(*) FROM \`$DB_NAME\`.users" 2>/dev/null || echo "表不存在")
 echo "迁移后 users 行数: $AFTER"
 if [ "$BEFORE" = "$AFTER" ] && [ "$BEFORE" != "表不存在" ]; then
     echo "✅ 存量用户数未变化（$BEFORE），升级未影响现有数据"
 elif [ "$BEFORE" = "表不存在" ]; then
-    echo "ℹ️ 全新数据库（无存量数据），已创建完整结构"
+    echo "ℹ️ 全新数据库，已创建完整表结构"
 else
     echo "⚠️ 注意：users 行数变化 $BEFORE → $AFTER，请人工核查"
 fi
@@ -147,5 +127,5 @@ echo ""
 echo "✅ 部署完成！"
 echo "前端访问: http://localhost:2530"
 echo "后端 API: http://localhost:$HOST_PORT"
-echo "API 文档: http://localhost:$HOST_PORT/docs"
+echo "数据库: $DB_NAME @ $DB_HOST"
 echo "部署备份位于: $BACKUP_DIR"
