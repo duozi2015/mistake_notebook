@@ -176,6 +176,7 @@ class TaskTemplate(Base):
     name = Column(String(100), nullable=False)
     description = Column(Text, default="")
     require_evidence = Column(Boolean, nullable=False, default=True)
+    estimated_minutes = Column(Integer, nullable=True)  # 预计耗时（分钟，家长填）
     repeat_type = Column(String(10), nullable=False, default="none")  # none | daily | weekly
     repeat_weekdays = Column(String(50), default="[]")  # JSON [0..6]，0=周一
     start_date = Column(Date, nullable=False)
@@ -213,6 +214,8 @@ class TaskInstance(Base):
     name = Column(String(100), nullable=False)
     description = Column(Text, default="")
     require_evidence = Column(Boolean, nullable=False, default=True)
+    estimated_minutes = Column(Integer, nullable=True)  # 预计耗时（分钟，家长填）
+    actual_minutes = Column(Integer, nullable=True)  # 实际耗时（分钟，学生打卡填）
     source = Column(String(20), nullable=False, default="manual")  # manual | auto_review
     status = Column(String(10), nullable=False, default="pending")  # pending | submitted | rejected | approved
     checkin_note = Column(Text, default="")

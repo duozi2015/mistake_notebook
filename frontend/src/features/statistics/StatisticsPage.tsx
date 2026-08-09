@@ -8,8 +8,19 @@ import {
   type MasteryItem,
   type HeatmapItem,
 } from '../../services/statistics'
+import { tasksApi } from '../../services/tasks'
+import type { TaskInstance } from '../../types'
 
 type PageState = 'loading' | 'loaded' | 'error' | 'empty'
+
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const CATEGORY_LABELS: Record<string, string> = { learning: '学习', sports: '运动', chores: '家务' }
 
 export default function StatisticsPage() {
   const [pageState, setPageState] = useState<PageState>('loading')
@@ -18,16 +29,22 @@ export default function StatisticsPage() {
   const [report, setReport] = useState<ReportData | null>(null)
   const [mastery, setMastery] = useState<MasteryItem[]>([])
   const [heatmapData, setHeatmapData] = useState<HeatmapItem[]>([])
+  const [taskHistory, setTaskHistory] = useState<TaskInstance[]>([])
+  const [taskToday, setTaskToday] = useState({ total: 0, pending: 0, submitted: 0, rejected: 0, approved: 0 })
 
   const fetchData = useCallback(async () => {
     setPageState('loading')
     try {
-      const [overviewRes, trendsRes, reportRes, masteryRes, heatmapRes] = await Promise.allSettled([
+      const end = new Date()
+      const start = new Date(); start.setDate(start.getDate() - 29)
+      const [overviewRes, trendsRes, reportRes, masteryRes, heatmapRes, taskHisRes, taskOvRes] = await Promise.allSettled([
         statisticsApi.overview(),
         statisticsApi.trends(),
         statisticsApi.report(),
         statisticsApi.mastery(),
         statisticsApi.heatmap(),
+        tasksApi.history({ start: toLocalDateStr(start), end: toLocalDateStr(end) }),
+        tasksApi.overview(),
       ])
 
       if (overviewRes.status !== 'fulfilled') {
@@ -50,6 +67,16 @@ export default function StatisticsPage() {
 
       if (heatmapRes.status === 'fulfilled') {
         setHeatmapData(heatmapRes.value.data.data ?? [])
+      }
+
+      if (taskHisRes.status === 'fulfilled') {
+        setTaskHistory(taskHisRes.value.data)
+      }
+
+      if (taskOvRes.status === 'fulfilled') {
+        const d = taskOvRes.value.data
+        if ('data' in d) setTaskToday(d.data[0] ?? { total: 0, pending: 0, submitted: 0, rejected: 0, approved: 0 })
+        else setTaskToday(d)
       }
 
       setPageState('loaded')
@@ -98,8 +125,31 @@ export default function StatisticsPage() {
     return `${d.getMonth() + 1}/${d.getDate()}`
   }
 
+  /* ──────────── 任务统计聚合 ──────────── */
+  const taskStats = useMemo(() => {
+    const approved = taskHistory.filter((t) => t.status === 'approved')
+    const byCat: Record<string, number> = { learning: 0, sports: 0, chores: 0 }
+    for (const t of approved) byCat[t.category] = (byCat[t.category] ?? 0) + 1
+    // 近 14 天每日完成趋势
+    const days: Record<string, number> = {}
+    for (const t of approved) days[t.task_date] = (days[t.task_date] ?? 0) + 1
+    const trend: { date: string; count: number }[] = []
+    const end = new Date()
+    const start = new Date(); start.setDate(start.getDate() - 13)
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const key = toLocalDateStr(d)
+      trend.push({ date: key, count: days[key] ?? 0 })
+    }
+    // 预计 vs 实际耗时
+    const withTime = approved.filter((t) => t.estimated_minutes != null && t.actual_minutes != null)
+    const avgEst = withTime.length ? Math.round(withTime.reduce((s, t) => s + (t.estimated_minutes ?? 0), 0) / withTime.length) : 0
+    const avgAct = withTime.length ? Math.round(withTime.reduce((s, t) => s + (t.actual_minutes ?? 0), 0) / withTime.length) : 0
+    const maxTrend = Math.max(...trend.map((x) => x.count), 1)
+    return { approvedCount: approved.length, byCat, trend, maxTrend, avgEst, avgAct, timeTasks: withTime.length, today: taskToday }
+  }, [taskHistory, taskToday])
+
   /* ──────────── Empty state check ──────────── */
-  const hasData = overview && (overview.total_questions > 0 || overview.total_reviews > 0)
+  const hasData = overview && (overview.total_questions > 0 || overview.total_reviews > 0 || taskHistory.length > 0 || taskToday.total > 0)
 
   /* ──────────── Loading skeleton ──────────── */
   if (pageState === 'loading') {
@@ -185,6 +235,91 @@ export default function StatisticsPage() {
         <h1 className="text-xl font-bold text-gray-800">📊 数据统计</h1>
         <span className="text-sm text-gray-500">{currentMonthLabel}</span>
       </div>
+
+      {/* ── 任务统计 ── */}
+      <h2 className="text-sm font-bold text-gray-800 mb-3">📋 任务统计</h2>
+      <div className="grid grid-cols-4 gap-2 mb-3">
+        <div className="bg-white rounded-xl p-3 shadow-sm text-center">
+          <div className="text-xl font-bold text-blue-600">{taskStats.approvedCount}</div>
+          <div className="text-[11px] text-gray-400 mt-0.5">近30天完成</div>
+        </div>
+        <div className="bg-white rounded-xl p-3 shadow-sm text-center">
+          <div className="text-xl font-bold text-green-600">{taskStats.today.approved}</div>
+          <div className="text-[11px] text-gray-400 mt-0.5">今日完成</div>
+        </div>
+        <div className="bg-white rounded-xl p-3 shadow-sm text-center">
+          <div className="text-xl font-bold text-gray-600">{taskStats.today.pending}</div>
+          <div className="text-[11px] text-gray-400 mt-0.5">待完成</div>
+        </div>
+        <div className="bg-white rounded-xl p-3 shadow-sm text-center">
+          <div className="text-xl font-bold text-orange-600">{taskStats.today.submitted}</div>
+          <div className="text-[11px] text-gray-400 mt-0.5">待检查</div>
+        </div>
+      </div>
+
+      {/* 分类分布 */}
+      <div className="bg-white rounded-xl p-4 shadow-sm mb-3">
+        <h3 className="text-xs font-bold text-gray-500 mb-2">完成分类分布</h3>
+        {(['learning', 'sports', 'chores'] as const).map((c) => {
+          const cnt = taskStats.byCat[c] ?? 0
+          const total = Math.max(taskStats.approvedCount, 1)
+          return (
+            <div key={c} className="flex items-center gap-2 mb-1.5 last:mb-0">
+              <span className="text-xs text-gray-600 w-8">{CATEGORY_LABELS[c]}</span>
+              <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(cnt / total) * 100}%` }} />
+              </div>
+              <span className="text-xs text-gray-400 w-6 text-right">{cnt}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* 近14天完成趋势 */}
+      <div className="bg-white rounded-xl p-4 shadow-sm mb-3">
+        <h3 className="text-xs font-bold text-gray-500 mb-2">近14天完成任务趋势</h3>
+        <div className="flex items-end gap-[3px] h-20">
+          {taskStats.trend.map((x) => (
+            <div key={x.date} className="flex-1 flex flex-col items-center justify-end h-full">
+              <div
+                className="w-full max-w-[14px] bg-gradient-to-t from-green-500 to-green-400 rounded-t-sm"
+                style={{ height: `${Math.max((x.count / taskStats.maxTrend) * 64, x.count ? 4 : 1)}px` }}
+                title={`${x.date}: ${x.count}`}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 预计 vs 实际耗时 */}
+      {taskStats.timeTasks > 0 && (
+        <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
+          <h3 className="text-xs font-bold text-gray-500 mb-2">耗时对比（{taskStats.timeTasks} 个任务）</h3>
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                <span>⏱ 平均预计</span>
+                <span className="font-bold text-gray-800">{taskStats.avgEst} 分钟</span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-400 rounded-full" style={{ width: `${Math.min((taskStats.avgEst / Math.max(taskStats.avgAct, 1)) * 100, 100)}%` }} />
+              </div>
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                <span>✅ 平均实际</span>
+                <span className="font-bold text-gray-800">{taskStats.avgAct} 分钟</span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-green-500 rounded-full" style={{ width: `${Math.min((taskStats.avgAct / Math.max(taskStats.avgEst, 1)) * 100, 100)}%` }} />
+              </div>
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2">
+            {taskStats.avgAct <= taskStats.avgEst ? '🎉 平均用时未超预计，继续保持！' : '💪 平均用时略超预计，可优化安排。'}
+          </p>
+        </div>
+      )}
 
       {/* ── Stat cards ── */}
       <div className="grid grid-cols-3 gap-3 mb-6">

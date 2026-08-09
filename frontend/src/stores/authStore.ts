@@ -33,7 +33,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     const stored = localStorage.getItem('user')
     const token = localStorage.getItem('access_token')
     if (stored && token) {
-      set({ user: JSON.parse(stored), isAuthenticated: true })
+      try {
+        const parsed = JSON.parse(stored)
+        // 旧会话无 role → 存量账号均为学生
+        if (!parsed.role) parsed.role = 'student'
+        set({ user: parsed, isAuthenticated: true })
+      } catch {
+        localStorage.removeItem('user')
+      }
     }
   },
 }))

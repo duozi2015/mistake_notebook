@@ -96,6 +96,7 @@ def ensure_instances(
                         name=t.name,
                         description=t.description,
                         require_evidence=t.require_evidence,
+                        estimated_minutes=t.estimated_minutes,
                         source="manual",
                         status="pending",
                     )

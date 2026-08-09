@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { familyApi } from '../../services/tasks'
-import { tasksApi } from '../../services/tasks'
-import type { FamilyChild, TaskOverview } from '../../types'
+import { familyApi, tasksApi, achievementsApi } from '../../services/tasks'
+import { hasNearAchievement, nearestAchievement } from './components/ChallengeCard'
+import type { Achievement, FamilyChild, TaskOverview } from '../../types'
 import { useAuthStore } from '../../stores/authStore'
 
 type PageState = 'loading' | 'loaded' | 'error'
@@ -14,15 +14,17 @@ export default function ParentHomePage() {
   const [children, setChildren] = useState<FamilyChild[]>([])
   const [overview, setOverview] = useState<TaskOverview[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [badges, setBadges] = useState<Achievement[]>([])
 
   const fetchData = useCallback(async () => {
     setState('loading')
     try {
-      const [childRes, ovRes] = await Promise.all([familyApi.children(), tasksApi.overview()])
+      const [childRes, ovRes, badgeRes] = await Promise.all([familyApi.children(), tasksApi.overview(), achievementsApi.list()])
       const active = childRes.data.filter((c) => c.status === 'active')
       setChildren(active)
       const ov = ovRes.data
       setOverview('data' in ov ? ov.data : [])
+      setBadges(badgeRes.data.data)
       if (!selectedId && active.length) setSelectedId(active[0].student_id)
       setState('loaded')
     } catch {
@@ -52,6 +54,7 @@ export default function ParentHomePage() {
 
   const sel = overview.find((o) => o.student_id === selectedId) ?? overview[0]
   const activeChild = children.find((c) => c.student_id === sel?.student_id)
+  const nearBadge = nearestAchievement(badges)
 
   return (
     <div className="pb-6">
@@ -105,15 +108,15 @@ export default function ParentHomePage() {
               </div>
               <div className="grid grid-cols-4 gap-2 text-center">
                 {[
-                  { label: '待完成', v: sel.pending, c: 'text-gray-600' },
-                  { label: '待检查', v: sel.submitted, c: 'text-orange-600' },
-                  { label: '需修改', v: sel.rejected, c: 'text-red-600' },
-                  { label: '已完成', v: sel.approved, c: 'text-green-600' },
+                  { label: '待完成', v: sel.pending, c: 'text-gray-600', to: '/parent/tasks' },
+                  { label: '待检查', v: sel.submitted, c: 'text-orange-600', to: '/parent/review' },
+                  { label: '需修改', v: sel.rejected, c: 'text-red-600', to: '/parent/tasks' },
+                  { label: '已完成', v: sel.approved, c: 'text-green-600', to: '/parent/tasks' },
                 ].map((it) => (
-                  <div key={it.label} className="py-2 bg-gray-50 rounded-xl">
+                  <button key={it.label} onClick={() => navigate(it.to)} className="py-2 bg-gray-50 rounded-xl active:bg-gray-100">
                     <div className={`text-lg font-bold ${it.c}`}>{it.v}</div>
                     <div className="text-xs text-gray-400">{it.label}</div>
-                  </div>
+                  </button>
                 ))}
               </div>
               <div className="flex gap-2 mt-3">
@@ -142,7 +145,7 @@ export default function ParentHomePage() {
             </Link>
             <Link to="/parent/templates" className="bg-white rounded-2xl p-4 shadow-sm active:bg-gray-50">
               <div className="text-2xl mb-1">🔁</div>
-              <div className="text-sm font-semibold text-gray-800">周期模板</div>
+              <div className="text-sm font-semibold text-gray-800">周期任务</div>
               <div className="text-xs text-gray-400 mt-0.5">每日 / 每周自动生成</div>
             </Link>
             <Link to="/parent/notebook" className="bg-white rounded-2xl p-4 shadow-sm active:bg-gray-50">
@@ -150,10 +153,13 @@ export default function ParentHomePage() {
               <div className="text-sm font-semibold text-gray-800">孩子错题本</div>
               <div className="text-xs text-gray-400 mt-0.5">统计 / 复习情况 / 错题</div>
             </Link>
-            <Link to="/parent/achievements" className="bg-white rounded-2xl p-4 shadow-sm active:bg-gray-50">
+            <Link to="/parent/achievements" className="relative bg-white rounded-2xl p-4 shadow-sm active:bg-gray-50">
+              {hasNearAchievement(badges) && <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
               <div className="text-2xl mb-1">🏅</div>
               <div className="text-sm font-semibold text-gray-800">成就</div>
-              <div className="text-xs text-gray-400 mt-0.5">家长激励徽章</div>
+              {nearBadge
+                ? <div className="text-xs text-orange-600 mt-0.5">🔥 {nearBadge.title} · 还差 {nearBadge.remaining} {nearBadge.unit}</div>
+                : <div className="text-xs text-gray-400 mt-0.5">家长激励徽章</div>}
             </Link>
           </div>
         </>

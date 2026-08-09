@@ -49,10 +49,11 @@ export default function SettingsPage() {
       addToast(msgOf(err) || '操作失败', 'error')
     }
   }
-  const handleReject = async (id: number) => {
+  const handleReject = async (id: number, msg: string) => {
+    if (!window.confirm(msg)) return
     try {
       await familyApi.unbind(id)
-      addToast('已拒绝', 'info')
+      addToast('已解除', 'info')
       refreshFamily()
     } catch (err: unknown) {
       addToast(msgOf(err) || '操作失败', 'error')
@@ -325,7 +326,7 @@ export default function SettingsPage() {
                   <button onClick={() => handleConfirm(r.id)} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium active:bg-green-700">
                     同意
                   </button>
-                  <button onClick={() => handleReject(r.id)} className="px-3 py-1.5 bg-gray-200 text-gray-600 rounded-lg text-xs font-medium active:bg-gray-300">
+                  <button onClick={() => handleReject(r.id, '确定拒绝该绑定请求？')} className="px-3 py-1.5 bg-gray-200 text-gray-600 rounded-lg text-xs font-medium active:bg-gray-300">
                     拒绝
                   </button>
                 </div>
@@ -349,7 +350,7 @@ export default function SettingsPage() {
                     {p.status === 'active' ? '已关联' : '待确认'}
                   </span>
                   {p.status === 'active' && (
-                    <button onClick={() => handleReject(p.id)} className="text-xs text-red-500 px-2 py-1 rounded-lg bg-red-50 active:bg-red-100">
+                    <button onClick={() => handleReject(p.id, `确定解绑「${p.display_name || p.username}」？`)} className="text-xs text-red-500 px-2 py-1 rounded-lg bg-red-50 active:bg-red-100">
                       解绑
                     </button>
                   )}
