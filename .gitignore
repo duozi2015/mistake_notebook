@@ -17,9 +17,6 @@ frontend/node_modules/
 # Build output
 frontend/dist/
 
-# Environment
-.env
-
 # Database
 *.db
 backend/data/*.db
