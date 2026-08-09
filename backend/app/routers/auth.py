@@ -108,7 +108,7 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "INVALID_CREDENTIALS", "message": "用户名或密码错误"},
+            detail={"code": "INVALID_CREDENTIALS", "message": "用户名或密码不正确"},
         )
     access_token, _, expires_in = create_access_token(user)
     refresh_token, _, _ = create_refresh_token(user)

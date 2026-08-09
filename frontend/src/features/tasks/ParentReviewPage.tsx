@@ -27,6 +27,14 @@ export default function ParentReviewPage() {
   const [corrections, setCorrections] = useState<PickedImage[]>([])
   const [submitting, setSubmitting] = useState(false)
 
+  // 批改弹层打开时锁定背景滚动
+  useEffect(() => {
+    if (!mode) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [mode])
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
@@ -61,11 +69,12 @@ export default function ParentReviewPage() {
     if (!current) return
     setSubmitting(true)
     try {
+      const result: 'approved' | 'rejected' = mode === 'approve' ? 'approved' : 'rejected'
       const payload = {
-        result: mode as 'approved' | 'rejected',
+        result,
         comment,
         version: current.version,
-        ...(mode === 'approve' ? { rating } : { correction_image_ids: corrections.map((c) => c.id) }),
+        ...(result === 'approved' ? { rating } : { correction_image_ids: corrections.map((c) => c.id) }),
       }
       await tasksApi.review(current.id, payload)
       addToast(mode === 'approve' ? '已通过' : '已退回需修改', 'success')
@@ -108,6 +117,9 @@ export default function ParentReviewPage() {
               </div>
               <div className="text-sm font-medium text-gray-800 mb-1">{t.name}</div>
               {t.checkin_note && <p className="text-xs text-gray-500 mb-1">📝 {t.checkin_note}</p>}
+              {t.estimated_minutes != null && t.actual_minutes != null && (
+                <p className="text-xs text-gray-400 mb-1">⏱ 预计 {t.estimated_minutes} 分钟 · 实际 {t.actual_minutes} 分钟</p>
+              )}
               <Thumbnails images={t.images.filter((i) => i.kind === 'evidence')} size={20} />
               <div className="flex gap-2 mt-3">
                 <button onClick={() => open(t, 'approve')} className="flex-1 py-2 bg-green-600 text-white rounded-xl text-sm font-medium active:bg-green-700">
@@ -126,11 +138,12 @@ export default function ParentReviewPage() {
       {mode && current && (
         <div className="fixed inset-0 z-50 flex items-end justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMode(null)} />
-          <div className="relative w-full max-w-lg bg-white rounded-t-2xl p-5 max-h-[88vh] overflow-y-auto safe-area-bottom">
-            <div className="flex items-center justify-between mb-3">
+          <div className="relative w-full max-w-lg bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+            <div className="flex items-center justify-between p-5 pb-2 shrink-0">
               <h3 className="text-base font-bold text-gray-800">{mode === 'approve' ? '通过任务' : '退回需修改'}</h3>
               <button type="button" onClick={() => setMode(null)} className="text-gray-400 text-2xl leading-none">×</button>
             </div>
+            <div className="flex-1 overflow-y-auto px-5 pb-2">
             <p className="text-sm font-medium text-gray-700 mb-3">{current.name}</p>
 
             {mode === 'approve' ? (
@@ -156,15 +169,18 @@ export default function ParentReviewPage() {
               />
             </div>
 
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={doReview}
-              className="w-full py-3 rounded-xl text-sm font-medium text-white active:opacity-90 disabled:opacity-50 min-h-[44px]"
-              style={{ backgroundColor: mode === 'approve' ? '#16a34a' : '#dc2626' }}
-            >
-              {submitting ? '提交中...' : mode === 'approve' ? '确认通过' : '确认退回'}
-            </button>
+            </div>
+            <div className="p-5 pt-2 shrink-0" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 48px)' }}>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={doReview}
+                className="w-full py-3 rounded-xl text-sm font-medium text-white active:opacity-90 disabled:opacity-50 min-h-[44px]"
+                style={{ backgroundColor: mode === 'approve' ? '#16a34a' : '#dc2626' }}
+              >
+                {submitting ? '提交中...' : mode === 'approve' ? '确认通过' : '确认退回'}
+              </button>
+            </div>
           </div>
         </div>
       )}

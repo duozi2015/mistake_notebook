@@ -28,6 +28,8 @@ export interface TaskInstance {
   name: string
   description: string
   require_evidence: boolean
+  estimated_minutes: number | null
+  actual_minutes: number | null
   source: 'manual' | 'auto_review'
   status: TaskStatus
   checkin_note: string
@@ -51,6 +53,7 @@ export interface TaskTemplate {
   name: string
   description: string
   require_evidence: boolean
+  estimated_minutes: number | null
   repeat_type: 'none' | 'daily' | 'weekly'
   repeat_weekdays: number[]
   start_date: string | null
@@ -105,6 +108,9 @@ export interface Achievement {
   unlocked: boolean
   progress: number
   target: number
+  unit: string
+  remaining: number
+  progress_pct: number
 }
 
 export interface Question {

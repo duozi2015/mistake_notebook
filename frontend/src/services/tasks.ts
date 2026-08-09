@@ -8,6 +8,7 @@ export interface TemplatePayload {
   name: string
   description?: string
   require_evidence?: boolean
+  estimated_minutes?: number | null
   repeat_type?: 'none' | 'daily' | 'weekly'
   repeat_weekdays?: number[]
   start_date?: string | null
@@ -24,6 +25,7 @@ export interface InstancePayload {
   name: string
   description?: string
   require_evidence?: boolean
+  estimated_minutes?: number | null
   illustration_image_ids?: number[]
   version?: number
 }
@@ -58,7 +60,7 @@ export const tasksApi = {
   remove: (id: number) => api.delete(`/tasks/${id}`),
   copy: (data: { student_id: number; date?: string }) =>
     api.post<{ copied: number; skipped: number }>('/tasks/daily/copy', data),
-  submit: (id: number, data: { note?: string; evidence_image_ids?: number[] }) =>
+  submit: (id: number, data: { note?: string; actual_minutes?: number | null; evidence_image_ids?: number[] }) =>
     api.post<TaskInstance>(`/tasks/${id}/submit`, data),
   withdraw: (id: number) => api.post<TaskInstance>(`/tasks/${id}/withdraw`),
   review: (

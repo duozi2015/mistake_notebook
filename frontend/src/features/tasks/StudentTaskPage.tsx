@@ -6,6 +6,7 @@ import CategoryTag from './components/CategoryTag'
 import Thumbnails from './components/Thumbnails'
 import ImagePicker, { type PickedImage } from './components/ImagePicker'
 import TaskFormSheet, { type TaskFormValues } from './components/TaskFormSheet'
+import ChallengeCard, { hasNearAchievement } from './components/ChallengeCard'
 import type { Achievement, TaskInstance } from '../../types'
 
 type Tab = 'today' | 'history' | 'badges'
@@ -72,6 +73,7 @@ export default function StudentTaskPage() {
         name: values.name,
         description: values.description,
         require_evidence: values.require_evidence,
+        estimated_minutes: values.estimated_minutes,
         illustration_image_ids: values.images.map((i) => i.id),
       })
       addToast('已添加自主任务 ⭐', 'success')
@@ -91,14 +93,18 @@ export default function StudentTaskPage() {
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1">
         {([['today', '今日待办'], ['history', '历史'], ['badges', '成就']] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium ${tab === k ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}>
+            className={`relative flex-1 py-2 rounded-lg text-sm font-medium ${tab === k ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}>
             {label}
+            {k === 'badges' && hasNearAchievement(badges) && (
+              <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            )}
           </button>
         ))}
       </div>
 
       {tab === 'today' && (
         <>
+          <ChallengeCard items={badges} onOpen={() => setTab('badges')} />
           {!loading && tasks.length > 0 && (
             <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
               <div className="flex items-center justify-between mb-1.5">
@@ -194,12 +200,13 @@ function TaskCheckinCard({ task, onChanged }: { task: TaskInstance; onChanged: (
   const addToast = useToastStore((s) => s.addToast)
   const [evidence, setEvidence] = useState<PickedImage[]>([])
   const [note, setNote] = useState('')
+  const [actualMinutes, setActualMinutes] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const submit = async () => {
     setSubmitting(true)
     try {
-      await tasksApi.submit(task.id, { note, evidence_image_ids: evidence.map((e) => e.id) })
+      await tasksApi.submit(task.id, { note, actual_minutes: actualMinutes, evidence_image_ids: evidence.map((e) => e.id) })
       addToast('已提交，等待家长检查', 'success')
       setEvidence([]); setNote('')
       onChanged()
@@ -229,11 +236,15 @@ function TaskCheckinCard({ task, onChanged }: { task: TaskInstance; onChanged: (
       <div className="flex items-center gap-2 mb-1 flex-wrap">
         <CategoryTag category={task.category} />
         {task.subject && <span className="text-xs text-blue-600 font-medium">{task.subject}</span>}
+        {task.template_id != null && <span className="text-xs px-1.5 py-0.5 bg-cyan-50 text-cyan-600 rounded">周期</span>}
         {task.source === 'auto_review' && <span className="text-xs px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded">记忆曲线</span>}
         {task.created_by_id === task.student_id && <span className="text-xs px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded">⭐ 自主</span>}
       </div>
       <div className="text-sm font-medium text-gray-800">{task.name}</div>
       {task.description && <p className="text-xs text-gray-500 mt-0.5">{task.description}</p>}
+      {task.estimated_minutes != null && (
+        <div className="text-xs text-gray-400 mt-1">⏱ 预计 {task.estimated_minutes} 分钟</div>
+      )}
       <Thumbnails images={task.images.filter((i) => i.kind === 'illustration')} size={14} />
 
       {/* 已提交的证据 */}
@@ -276,6 +287,15 @@ function TaskCheckinCard({ task, onChanged }: { task: TaskInstance; onChanged: (
               <ImagePicker value={evidence} onChange={setEvidence} max={6} />
             </div>
           )}
+          <input
+            type="number"
+            min={1}
+            max={1440}
+            value={actualMinutes ?? ''}
+            onChange={(e) => setActualMinutes(e.target.value ? Math.min(Math.max(Number(e.target.value), 1), 1440) : null)}
+            placeholder="实际耗时（分钟，可选）"
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 mb-2"
+          />
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="完成备注（可选）"
             className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 resize-none mb-2" />
           <button onClick={submit} disabled={submitting || (task.require_evidence && evidence.length === 0)}

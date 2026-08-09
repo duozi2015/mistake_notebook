@@ -12,6 +12,11 @@ api.interceptors.response.use(
   (res) => res,
   async (error) => {
     if (error.response?.status === 401) {
+      const url = error.config?.url ?? ''
+      // 登录/注册失败是业务错误（账号或密码不正确），交给页面展示，不做会话过期跳转
+      if (url.includes('/auth/login') || url.includes('/auth/register')) {
+        return Promise.reject(error)
+      }
       const refreshToken = localStorage.getItem('refresh_token')
       if (refreshToken && !error.config._retry) {
         error.config._retry = true

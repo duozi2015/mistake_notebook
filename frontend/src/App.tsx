@@ -35,7 +35,8 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 }
 
 function RoleGate({ role, children }: { role: 'student' | 'parent'; children: React.ReactNode }) {
-  const currentRole = useAuthStore((s) => s.user?.role)
+  // 旧会话存储的 user 无 role 字段 → 按学生处理（存量账号均为学生）
+  const currentRole = useAuthStore((s) => s.user?.role) ?? 'student'
   if (currentRole !== role) {
     return <Navigate to={role === 'parent' ? '/' : '/parent'} replace />
   }

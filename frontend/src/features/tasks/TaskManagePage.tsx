@@ -50,12 +50,21 @@ export default function TaskManagePage() {
   }, [studentId, dateStr, fetchTasks])
 
   const grouped = useMemo(() => {
-    const order: Record<string, number> = { learning: 0, sports: 1, chores: 2 }
-    return [...tasks].sort((a, b) => order[a.category] - order[b.category])
+    // 未完成(待完成/待检查/需修改)在前，已完成在后；同状态内按分类
+    const statusRank = (s: string) => (s === 'approved' ? 1 : 0)
+    const categoryOrder: Record<string, number> = { learning: 0, sports: 1, chores: 2 }
+    return [...tasks].sort((a, b) => {
+      const sr = statusRank(a.status) - statusRank(b.status)
+      if (sr !== 0) return sr
+      return categoryOrder[a.category] - categoryOrder[b.category]
+    })
   }, [tasks])
 
   const handleAdd = async (values: TaskFormValues) => {
-    if (studentId == null) return
+    if (studentId == null) {
+      addToast('请先在「设置」中关联孩子', 'error')
+      return
+    }
     setSaving(true)
     try {
       await tasksApi.create({
@@ -66,6 +75,7 @@ export default function TaskManagePage() {
         name: values.name,
         description: values.description,
         require_evidence: values.require_evidence,
+        estimated_minutes: values.estimated_minutes,
         illustration_image_ids: values.images.map((i) => i.id),
       })
       addToast('已添加', 'success')
@@ -89,6 +99,7 @@ export default function TaskManagePage() {
         name: values.name,
         description: values.description,
         require_evidence: values.require_evidence,
+        estimated_minutes: values.estimated_minutes,
         illustration_image_ids: values.images.map((i) => i.id),
         version: t.version,
       })
@@ -209,28 +220,37 @@ export default function TaskManagePage() {
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <CategoryTag category={t.category} />
                     {t.subject && <span className="text-xs text-blue-600 font-medium">{t.subject}</span>}
+                    {t.template_id != null && <span className="text-xs px-1.5 py-0.5 bg-cyan-50 text-cyan-600 rounded">周期</span>}
                     {t.source === 'auto_review' && <span className="text-xs px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded">记忆曲线</span>}
                     <span className="text-xs text-gray-400">{STATUS_LABELS[t.status]}</span>
                   </div>
                   <div className="text-sm font-medium text-gray-800">{t.name}</div>
                   {t.description && <p className="text-xs text-gray-500 mt-0.5">{t.description}</p>}
+                  {(t.estimated_minutes || t.actual_minutes) && (
+                    <div className="text-xs text-gray-400 mt-1">
+                      {t.estimated_minutes ? `⏱ 预计 ${t.estimated_minutes} 分钟` : ''}
+                      {t.actual_minutes ? ` · 实际 ${t.actual_minutes} 分钟` : ''}
+                    </div>
+                  )}
                   <Thumbnails images={t.images.filter((i) => i.kind === 'illustration')} size={14} />
                   {t.rating != null && <div className="text-xs text-orange-500 mt-1">{'⭐'.repeat(t.rating)}</div>}
                 </div>
-                <div className="flex flex-col gap-1 flex-shrink-0">
-                  <button
-                    onClick={() => setSheet({ mode: 'edit', task: t })}
-                    className="px-3 py-1 bg-gray-50 text-gray-600 rounded-lg text-xs active:bg-gray-100"
-                  >
-                    编辑
-                  </button>
-                  <button
-                    onClick={() => handleDelete(t)}
-                    className="px-3 py-1 bg-gray-50 text-red-500 rounded-lg text-xs active:bg-red-50"
-                  >
-                    删除
-                  </button>
-                </div>
+                {t.status !== 'approved' && (
+                  <div className="flex flex-col gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => setSheet({ mode: 'edit', task: t })}
+                      className="px-3 py-1 bg-gray-50 text-gray-600 rounded-lg text-xs active:bg-gray-100"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      onClick={() => handleDelete(t)}
+                      className="px-3 py-1 bg-gray-50 text-red-500 rounded-lg text-xs active:bg-red-50"
+                    >
+                      删除
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -248,6 +268,7 @@ export default function TaskManagePage() {
             name: sheet.task.name,
             description: sheet.task.description,
             require_evidence: sheet.task.require_evidence,
+            estimated_minutes: sheet.task.estimated_minutes,
             images: sheet.task.images.filter((i) => i.kind === 'illustration').map((i) => ({ id: i.id, file_path: i.file_path })),
           } : undefined}
           onClose={() => setSheet(null)}

@@ -4,7 +4,7 @@ const NAV_ITEMS = [
   { to: '/parent', label: '首页', icon: '🏠', end: true },
   { to: '/parent/tasks', label: '今日任务', icon: '📋' },
   { to: '/parent/review', label: '检查', icon: '🔍' },
-  { to: '/parent/templates', label: '模板', icon: '🔁' },
+  { to: '/parent/templates', label: '周期任务', icon: '🔁' },
   { to: '/parent/settings', label: '设置', icon: '⚙️' },
 ]
 

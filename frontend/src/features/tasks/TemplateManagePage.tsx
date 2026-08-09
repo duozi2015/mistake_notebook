@@ -36,7 +36,7 @@ export default function TemplateManagePage() {
       const res = await tasksApi.templates(sid)
       setTemplates(res.data)
     } catch {
-      addToast('加载模板失败', 'error')
+      addToast('加载周期任务失败', 'error')
     } finally {
       setLoading(false)
     }
@@ -47,7 +47,10 @@ export default function TemplateManagePage() {
   }, [studentId, fetchTemplates])
 
   const handleAdd = async (values: TemplateFormValues) => {
-    if (studentId == null) return
+    if (studentId == null) {
+      addToast('请先在「设置」中关联孩子', 'error')
+      return
+    }
     setSaving(true)
     try {
       await tasksApi.createTemplate({
@@ -57,13 +60,14 @@ export default function TemplateManagePage() {
         name: values.name,
         description: values.description,
         require_evidence: values.require_evidence,
+        estimated_minutes: values.estimated_minutes,
         repeat_type: values.repeat_type,
         repeat_weekdays: values.repeat_weekdays,
         start_date: values.start_date || undefined,
         end_date: values.end_date || undefined,
         illustration_image_ids: values.images.map((i) => i.id),
       })
-      addToast('模板已创建', 'success')
+      addToast('周期任务已创建', 'success')
       setSheet(null)
       fetchTemplates(studentId)
     } catch (err: any) {
@@ -84,6 +88,7 @@ export default function TemplateManagePage() {
         name: values.name,
         description: values.description,
         require_evidence: values.require_evidence,
+        estimated_minutes: values.estimated_minutes,
         repeat_type: values.repeat_type,
         repeat_weekdays: values.repeat_weekdays,
         start_date: values.start_date || undefined,
@@ -91,7 +96,7 @@ export default function TemplateManagePage() {
         illustration_image_ids: values.images.map((i) => i.id),
         version: t.version,
       })
-      addToast('模板已更新', 'success')
+      addToast('周期任务已更新', 'success')
       setSheet(null)
       fetchTemplates(studentId as number)
     } catch (err: any) {
@@ -102,7 +107,7 @@ export default function TemplateManagePage() {
   }
 
   const handleArchive = async (t: TaskTemplate) => {
-    if (!window.confirm(`归档模板「${t.name}」？（将不再生成新任务）`)) return
+    if (!window.confirm(`归档周期任务「${t.name}」？（将不再生成新任务）`)) return
     try {
       await tasksApi.deleteTemplate(t.id)
       addToast('已归档', 'success')
@@ -114,7 +119,7 @@ export default function TemplateManagePage() {
 
   return (
     <div className="pb-6">
-      <h1 className="text-xl font-bold text-gray-800 mb-3">🔁 周期模板</h1>
+      <h1 className="text-xl font-bold text-gray-800 mb-3">🔁 周期任务</h1>
       <p className="text-xs text-gray-400 mb-4">设置后每日/每周自动为孩子生成任务</p>
 
       {children.length > 1 && (
@@ -130,7 +135,7 @@ export default function TemplateManagePage() {
 
       <button onClick={() => setSheet({ mode: 'add' })}
         className="w-full py-3 bg-blue-600 text-white rounded-xl text-sm font-medium mb-4 active:bg-blue-700">
-        + 新建模板
+        + 新建周期任务
       </button>
 
       {loading ? (
@@ -138,7 +143,7 @@ export default function TemplateManagePage() {
       ) : templates.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-5xl mb-3">🗂️</div>
-          <p className="text-gray-400 text-sm">暂无模板</p>
+          <p className="text-gray-400 text-sm">暂无周期任务</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -170,7 +175,7 @@ export default function TemplateManagePage() {
       {sheet && (
         <TemplateFormSheet
           open
-          title={sheet.mode === 'add' ? '新建模板' : '编辑模板'}
+          title={sheet.mode === 'add' ? '新建周期任务' : '编辑周期任务'}
           submitting={saving}
           initial={sheet.mode === 'edit' && sheet.template ? {
             category: sheet.template.category,
@@ -178,6 +183,7 @@ export default function TemplateManagePage() {
             name: sheet.template.name,
             description: sheet.template.description,
             require_evidence: sheet.template.require_evidence,
+            estimated_minutes: sheet.template.estimated_minutes,
             repeat_type: sheet.template.repeat_type,
             repeat_weekdays: sheet.template.repeat_weekdays,
             start_date: sheet.template.start_date || undefined,

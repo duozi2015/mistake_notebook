@@ -13,6 +13,9 @@ from app import models  # noqa: F401  # 确保全部模型注册到 Base.metadat
 # (表, 列, DDL)。ALTER 时带上 DEFAULT，确保存量行自动获得默认值。
 COLUMN_MIGRATIONS = [
     ("users", "role", "VARCHAR(20) NOT NULL DEFAULT 'student'"),
+    ("task_templates", "estimated_minutes", "INTEGER"),
+    ("task_instances", "estimated_minutes", "INTEGER"),
+    ("task_instances", "actual_minutes", "INTEGER"),
 ]
 
 

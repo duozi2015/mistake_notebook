@@ -155,6 +155,8 @@ def _instance_response(db: Session, inst: TaskInstance) -> TaskInstanceResponse:
         name=inst.name,
         description=inst.description,
         require_evidence=inst.require_evidence,
+        estimated_minutes=inst.estimated_minutes,
+        actual_minutes=inst.actual_minutes,
         source=inst.source,
         status=inst.status,
         checkin_note=inst.checkin_note,
@@ -184,6 +186,7 @@ def _template_response(db: Session, t: TaskTemplate) -> TaskTemplateResponse:
         name=t.name,
         description=t.description,
         require_evidence=t.require_evidence,
+        estimated_minutes=t.estimated_minutes,
         repeat_type=t.repeat_type,
         repeat_weekdays=weekdays,
         start_date=t.start_date,
@@ -323,6 +326,7 @@ def create_template(
         name=data.name,
         description=data.description,
         require_evidence=data.require_evidence,
+        estimated_minutes=data.estimated_minutes,
         repeat_type=data.repeat_type,
         repeat_weekdays=json.dumps(data.repeat_weekdays),
         start_date=data.start_date or task_generation.local_today(),
@@ -354,7 +358,7 @@ def update_template(
     _require_bound_student(db, current_user, t.student_id)
     _check_version(t, data.version)
     for field in ["category", "subject", "name", "description", "require_evidence",
-                  "repeat_type", "start_date", "end_date", "status"]:
+                  "estimated_minutes", "repeat_type", "start_date", "end_date", "status"]:
         val = getattr(data, field, None)
         if val is not None:
             setattr(t, field, val)
@@ -448,6 +452,7 @@ def create_daily_task(
         name=data.name,
         description=data.description,
         require_evidence=data.require_evidence,
+        estimated_minutes=data.estimated_minutes,
         source="manual",
         status="pending",
         version=0,
@@ -479,7 +484,7 @@ def update_instance(
             detail={"code": "FORBIDDEN", "message": "无权编辑该任务"},
         )
     _check_version(inst, data.version)
-    for field in ["category", "subject", "name", "description", "require_evidence"]:
+    for field in ["category", "subject", "name", "description", "require_evidence", "estimated_minutes"]:
         val = getattr(data, field, None)
         if val is not None:
             setattr(inst, field, val)
@@ -566,6 +571,7 @@ def copy_yesterday(
             name=s.name,
             description=s.description,
             require_evidence=s.require_evidence,
+            estimated_minutes=s.estimated_minutes,
             source="manual",
             status="pending",
             version=0,
@@ -619,6 +625,8 @@ def submit_task(
         _replace_images(db, data.evidence_image_ids, "instance", inst.id, "evidence", current_user.id)
     inst.status = "submitted"
     inst.checkin_note = data.note
+    if data.actual_minutes is not None:
+        inst.actual_minutes = data.actual_minutes
     inst.submitted_at = _utcnow()
     inst.updated_at = _utcnow()
     db.commit()

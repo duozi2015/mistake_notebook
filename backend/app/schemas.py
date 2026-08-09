@@ -200,6 +200,7 @@ class TaskTemplateCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str = ""
     require_evidence: bool = True
+    estimated_minutes: Optional[int] = Field(default=None, ge=1, le=1440)
     repeat_type: str = Field("none", pattern="^(none|daily|weekly)$")
     repeat_weekdays: list[int] = []
     start_date: Optional[date] = None
@@ -213,6 +214,7 @@ class TaskTemplateUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     require_evidence: Optional[bool] = None
+    estimated_minutes: Optional[int] = Field(default=None, ge=1, le=1440)
     repeat_type: Optional[str] = Field(default=None, pattern="^(none|daily|weekly)$")
     repeat_weekdays: Optional[list[int]] = None
     start_date: Optional[date] = None
@@ -231,6 +233,7 @@ class TaskTemplateResponse(BaseModel):
     name: str
     description: str
     require_evidence: bool
+    estimated_minutes: Optional[int]
     repeat_type: str
     repeat_weekdays: list[int]
     start_date: Optional[date]
@@ -250,6 +253,7 @@ class TaskInstanceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str = ""
     require_evidence: bool = True
+    estimated_minutes: Optional[int] = Field(default=None, ge=1, le=1440)
     illustration_image_ids: list[int] = []
 
 
@@ -259,6 +263,7 @@ class TaskInstanceUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     require_evidence: Optional[bool] = None
+    estimated_minutes: Optional[int] = Field(default=None, ge=1, le=1440)
     illustration_image_ids: Optional[list[int]] = None
     version: Optional[int] = None
 
@@ -274,6 +279,8 @@ class TaskInstanceResponse(BaseModel):
     name: str
     description: str
     require_evidence: bool
+    estimated_minutes: Optional[int]
+    actual_minutes: Optional[int]
     source: str
     status: str
     checkin_note: str
@@ -290,6 +297,7 @@ class TaskInstanceResponse(BaseModel):
 
 class CheckinSubmit(BaseModel):
     note: str = ""
+    actual_minutes: Optional[int] = Field(default=None, ge=1, le=1440)
     evidence_image_ids: list[int] = []
 
 
