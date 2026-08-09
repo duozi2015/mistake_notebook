@@ -1,20 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { familyApi, tasksApi } from '../../services/tasks'
 import { useToastStore } from '../../stores/toastStore'
+import BottomSheet from '../../components/Shared/BottomSheet'
 import CategoryTag from './components/CategoryTag'
 import Thumbnails from './components/Thumbnails'
 import StarsPicker from './components/StarsPicker'
 import ImagePicker, { type PickedImage } from './components/ImagePicker'
+import { toLocalDateStr } from '../../utils/format'
 import type { TaskInstance } from '../../types'
 
 type Mode = 'approve' | 'reject' | null
-
-function toLocalDateStr(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
 
 export default function ParentReviewPage() {
   const addToast = useToastStore((s) => s.addToast)
@@ -26,14 +21,6 @@ export default function ParentReviewPage() {
   const [comment, setComment] = useState('')
   const [corrections, setCorrections] = useState<PickedImage[]>([])
   const [submitting, setSubmitting] = useState(false)
-
-  // 批改弹层打开时锁定背景滚动
-  useEffect(() => {
-    if (!mode) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prev }
-  }, [mode])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -135,55 +122,47 @@ export default function ParentReviewPage() {
       )}
 
       {/* 批改弹层 */}
-      {mode && current && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setMode(null)} />
-          <div className="relative w-full max-w-lg bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
-            <div className="flex items-center justify-between p-5 pb-2 shrink-0">
-              <h3 className="text-base font-bold text-gray-800">{mode === 'approve' ? '通过任务' : '退回需修改'}</h3>
-              <button type="button" onClick={() => setMode(null)} className="text-gray-400 text-2xl leading-none">×</button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-5 pb-2">
-            <p className="text-sm font-medium text-gray-700 mb-3">{current.name}</p>
+      <BottomSheet
+        open={!!mode && !!current}
+        title={mode === 'approve' ? '通过任务' : '退回需修改'}
+        onClose={() => setMode(null)}
+        footer={
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={doReview}
+            className="w-full py-3 rounded-xl text-sm font-medium text-white active:opacity-90 disabled:opacity-50 min-h-[44px]"
+            style={{ backgroundColor: mode === 'approve' ? '#16a34a' : '#dc2626' }}
+          >
+            {submitting ? '提交中...' : mode === 'approve' ? '确认通过' : '确认退回'}
+          </button>
+        }
+      >
+        <p className="text-sm font-medium text-gray-700 mb-3">{current?.name}</p>
 
-            {mode === 'approve' ? (
-              <div className="mb-4">
-                <label className="text-xs text-gray-500 mb-1.5 block">星级评分</label>
-                <StarsPicker value={rating} onChange={setRating} />
-              </div>
-            ) : (
-              <div className="mb-4">
-                <label className="text-xs text-gray-500 mb-1.5 block">纠错图片（指出问题，可选）</label>
-                <ImagePicker value={corrections} onChange={setCorrections} max={4} />
-              </div>
-            )}
-
-            <div className="mb-4">
-              <label className="text-xs text-gray-500 mb-1 block">评语（可选）</label>
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                rows={2}
-                placeholder={mode === 'reject' ? '请说明哪里需要修改' : '给孩子一句鼓励'}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 resize-none"
-              />
-            </div>
-
-            </div>
-            <div className="p-5 pt-2 shrink-0" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 48px)' }}>
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={doReview}
-                className="w-full py-3 rounded-xl text-sm font-medium text-white active:opacity-90 disabled:opacity-50 min-h-[44px]"
-                style={{ backgroundColor: mode === 'approve' ? '#16a34a' : '#dc2626' }}
-              >
-                {submitting ? '提交中...' : mode === 'approve' ? '确认通过' : '确认退回'}
-              </button>
-            </div>
+        {mode === 'approve' ? (
+          <div className="mb-4">
+            <label className="text-xs text-gray-500 mb-1.5 block">星级评分</label>
+            <StarsPicker value={rating} onChange={setRating} />
           </div>
+        ) : (
+          <div className="mb-4">
+            <label className="text-xs text-gray-500 mb-1.5 block">纠错图片（指出问题，可选）</label>
+            <ImagePicker value={corrections} onChange={setCorrections} max={4} />
+          </div>
+        )}
+
+        <div className="mb-4">
+          <label className="text-xs text-gray-500 mb-1 block">评语（可选）</label>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            rows={2}
+            placeholder={mode === 'reject' ? '请说明哪里需要修改' : '给孩子一句鼓励'}
+            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 resize-none"
+          />
         </div>
-      )}
+      </BottomSheet>
     </div>
   )
 }

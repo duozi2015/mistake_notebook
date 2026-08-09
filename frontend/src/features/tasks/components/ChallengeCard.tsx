@@ -1,14 +1,5 @@
+import { isNearAchievement, nearestAchievement } from '../achievements'
 import type { Achievement } from '../../../types'
-
-export function hasNearAchievement(items: Achievement[]): boolean {
-  return items.some((a) => !a.unlocked && a.progress > 0 && a.progress_pct >= 80)
-}
-
-export function nearestAchievement(items: Achievement[]): Achievement | null {
-  const locked = items.filter((a) => !a.unlocked && a.progress > 0)
-  if (!locked.length) return null
-  return [...locked].sort((a, b) => b.progress_pct - a.progress_pct)[0]
-}
 
 interface ChallengeCardProps {
   items: Achievement[]
@@ -17,7 +8,7 @@ interface ChallengeCardProps {
 
 export default function ChallengeCard({ items, onOpen }: ChallengeCardProps) {
   const near = nearestAchievement(items)
-  const nearCount = items.filter((a) => !a.unlocked && a.progress > 0 && a.progress_pct >= 80).length
+  const nearCount = items.filter(isNearAchievement).length
   const unlockedCount = items.filter((a) => a.unlocked).length
 
   return (

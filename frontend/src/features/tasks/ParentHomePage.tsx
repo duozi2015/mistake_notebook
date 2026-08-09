@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { familyApi, tasksApi, achievementsApi } from '../../services/tasks'
-import { hasNearAchievement, nearestAchievement } from './components/ChallengeCard'
+import { nearestAchievement } from './achievements'
 import type { Achievement, FamilyChild, TaskOverview } from '../../types'
 import { useAuthStore } from '../../stores/authStore'
 
@@ -25,12 +25,13 @@ export default function ParentHomePage() {
       const ov = ovRes.data
       setOverview('data' in ov ? ov.data : [])
       setBadges(badgeRes.data.data)
-      if (!selectedId && active.length) setSelectedId(active[0].student_id)
+      // 默认选中第一个孩子（函数式更新，避免依赖 selectedId 造成重复请求）
+      setSelectedId((prev) => prev ?? active[0]?.student_id ?? null)
       setState('loaded')
     } catch {
       setState('error')
     }
-  }, [selectedId])
+  }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -55,6 +56,7 @@ export default function ParentHomePage() {
   const sel = overview.find((o) => o.student_id === selectedId) ?? overview[0]
   const activeChild = children.find((c) => c.student_id === sel?.student_id)
   const nearBadge = nearestAchievement(badges)
+  const isNear = nearBadge != null && nearBadge.progress_pct >= 80
 
   return (
     <div className="pb-6">
@@ -154,10 +156,10 @@ export default function ParentHomePage() {
               <div className="text-xs text-gray-400 mt-0.5">统计 / 复习情况 / 错题</div>
             </Link>
             <Link to="/parent/achievements" className="relative bg-white rounded-2xl p-4 shadow-sm active:bg-gray-50">
-              {hasNearAchievement(badges) && <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
+              {isNear && <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
               <div className="text-2xl mb-1">🏅</div>
               <div className="text-sm font-semibold text-gray-800">成就</div>
-              {nearBadge
+              {isNear && nearBadge
                 ? <div className="text-xs text-orange-600 mt-0.5">🔥 {nearBadge.title} · 还差 {nearBadge.remaining} {nearBadge.unit}</div>
                 : <div className="text-xs text-gray-400 mt-0.5">家长激励徽章</div>}
             </Link>

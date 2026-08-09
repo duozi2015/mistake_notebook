@@ -9,18 +9,11 @@ import {
   type HeatmapItem,
 } from '../../services/statistics'
 import { tasksApi } from '../../services/tasks'
+import { toLocalDateStr } from '../../utils/format'
+import { CATEGORY_LABELS } from '../tasks/constants'
 import type { TaskInstance } from '../../types'
 
 type PageState = 'loading' | 'loaded' | 'error' | 'empty'
-
-function toLocalDateStr(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-const CATEGORY_LABELS: Record<string, string> = { learning: '学习', sports: '运动', chores: '家务' }
 
 export default function StatisticsPage() {
   const [pageState, setPageState] = useState<PageState>('loading')
@@ -30,21 +23,19 @@ export default function StatisticsPage() {
   const [mastery, setMastery] = useState<MasteryItem[]>([])
   const [heatmapData, setHeatmapData] = useState<HeatmapItem[]>([])
   const [taskHistory, setTaskHistory] = useState<TaskInstance[]>([])
-  const [taskToday, setTaskToday] = useState({ total: 0, pending: 0, submitted: 0, rejected: 0, approved: 0 })
 
   const fetchData = useCallback(async () => {
     setPageState('loading')
     try {
       const end = new Date()
       const start = new Date(); start.setDate(start.getDate() - 29)
-      const [overviewRes, trendsRes, reportRes, masteryRes, heatmapRes, taskHisRes, taskOvRes] = await Promise.allSettled([
+      const [overviewRes, trendsRes, reportRes, masteryRes, heatmapRes, taskHisRes] = await Promise.allSettled([
         statisticsApi.overview(),
         statisticsApi.trends(),
         statisticsApi.report(),
         statisticsApi.mastery(),
         statisticsApi.heatmap(),
         tasksApi.history({ start: toLocalDateStr(start), end: toLocalDateStr(end) }),
-        tasksApi.overview(),
       ])
 
       if (overviewRes.status !== 'fulfilled') {
@@ -71,12 +62,6 @@ export default function StatisticsPage() {
 
       if (taskHisRes.status === 'fulfilled') {
         setTaskHistory(taskHisRes.value.data)
-      }
-
-      if (taskOvRes.status === 'fulfilled') {
-        const d = taskOvRes.value.data
-        if ('data' in d) setTaskToday(d.data[0] ?? { total: 0, pending: 0, submitted: 0, rejected: 0, approved: 0 })
-        else setTaskToday(d)
       }
 
       setPageState('loaded')
@@ -145,11 +130,21 @@ export default function StatisticsPage() {
     const avgEst = withTime.length ? Math.round(withTime.reduce((s, t) => s + (t.estimated_minutes ?? 0), 0) / withTime.length) : 0
     const avgAct = withTime.length ? Math.round(withTime.reduce((s, t) => s + (t.actual_minutes ?? 0), 0) / withTime.length) : 0
     const maxTrend = Math.max(...trend.map((x) => x.count), 1)
-    return { approvedCount: approved.length, byCat, trend, maxTrend, avgEst, avgAct, timeTasks: withTime.length, today: taskToday }
-  }, [taskHistory, taskToday])
+    // 今日各状态计数（从 history 派生，避免额外请求）
+    const today = toLocalDateStr(new Date())
+    const todayStats = { total: 0, pending: 0, submitted: 0, rejected: 0, approved: 0 }
+    for (const t of taskHistory) {
+      if (t.task_date !== today) continue
+      todayStats.total += 1
+      if (t.status === 'pending' || t.status === 'submitted' || t.status === 'rejected' || t.status === 'approved') {
+        todayStats[t.status] += 1
+      }
+    }
+    return { approvedCount: approved.length, byCat, trend, maxTrend, avgEst, avgAct, timeTasks: withTime.length, today: todayStats }
+  }, [taskHistory])
 
   /* ──────────── Empty state check ──────────── */
-  const hasData = overview && (overview.total_questions > 0 || overview.total_reviews > 0 || taskHistory.length > 0 || taskToday.total > 0)
+  const hasData = overview && (overview.total_questions > 0 || overview.total_reviews > 0 || taskHistory.length > 0)
 
   /* ──────────── Loading skeleton ──────────── */
   if (pageState === 'loading') {

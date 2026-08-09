@@ -6,17 +6,12 @@ import CategoryTag from './components/CategoryTag'
 import Thumbnails from './components/Thumbnails'
 import ImagePicker, { type PickedImage } from './components/ImagePicker'
 import TaskFormSheet, { type TaskFormValues } from './components/TaskFormSheet'
-import ChallengeCard, { hasNearAchievement } from './components/ChallengeCard'
+import ChallengeCard from './components/ChallengeCard'
+import { hasNearAchievement } from './achievements'
+import { clampMinutes, toLocalDateStr } from '../../utils/format'
 import type { Achievement, TaskInstance } from '../../types'
 
 type Tab = 'today' | 'history' | 'badges'
-
-function toLocalDateStr(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
 
 export default function StudentTaskPage() {
   const user = useAuthStore((s) => s.user)
@@ -292,7 +287,7 @@ function TaskCheckinCard({ task, onChanged }: { task: TaskInstance; onChanged: (
             min={1}
             max={1440}
             value={actualMinutes ?? ''}
-            onChange={(e) => setActualMinutes(e.target.value ? Math.min(Math.max(Number(e.target.value), 1), 1440) : null)}
+            onChange={(e) => setActualMinutes(e.target.value ? clampMinutes(Number(e.target.value)) : null)}
             placeholder="实际耗时（分钟，可选）"
             className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 mb-2"
           />
