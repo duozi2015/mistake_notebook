@@ -4,6 +4,7 @@ import { familyApi, tasksApi } from '../../services/tasks'
 import { useToastStore } from '../../stores/toastStore'
 import CategoryTag from './components/CategoryTag'
 import Thumbnails from './components/Thumbnails'
+import TaskTimeInfo from './components/TaskTimeInfo'
 import TaskFormSheet, { type TaskFormValues } from './components/TaskFormSheet'
 import { STATUS_LABELS, statusRank } from './constants'
 import { toLocalDateStr } from '../../utils/format'
@@ -260,12 +261,7 @@ export default function TaskManagePage() {
                   </div>
                   <div className="text-sm font-medium text-gray-800">{t.name}</div>
                   {t.description && <p className="text-xs text-gray-500 mt-0.5">{t.description}</p>}
-                  {(t.estimated_minutes || t.actual_minutes) && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      {t.estimated_minutes ? `⏱ 预计 ${t.estimated_minutes} 分钟` : ''}
-                      {t.actual_minutes ? ` · 实际 ${t.actual_minutes} 分钟` : ''}
-                    </div>
-                  )}
+                  <TaskTimeInfo task={t} />
                   <Thumbnails images={t.images.filter((i) => i.kind === 'illustration')} size={14} />
                   {t.rating != null && <div className="text-xs text-orange-500 mt-1">{'⭐'.repeat(t.rating)}</div>}
                 </div>
