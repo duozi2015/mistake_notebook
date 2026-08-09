@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User, Question, QuestionTag, Review, QuestionImage
-from app.auth import get_current_user
+from app.auth import get_current_user, resolve_student_id
 
 router = APIRouter(prefix="/api/v1/statistics", tags=["统计"])
 
@@ -37,9 +37,10 @@ def _ef_to_mastery(ef: float) -> float:
 @router.get("/overview")
 def get_overview(
     db: Session = Depends(get_db),
+    student_id: int | None = None,
     current_user: User = Depends(get_current_user),
 ):
-    user_id = current_user.id
+    user_id = resolve_student_id(db, current_user, student_id)
     today = _now().date()
     today_start = datetime.combine(today, datetime.min.time())
     today_end = datetime.combine(today, datetime.max.time())
@@ -133,9 +134,10 @@ def get_overview(
 @router.get("/trends")
 def get_trends(
     db: Session = Depends(get_db),
+    student_id: int | None = None,
     current_user: User = Depends(get_current_user),
 ):
-    user_id = current_user.id
+    user_id = resolve_student_id(db, current_user, student_id)
     thirty_days_ago = _now() - timedelta(days=29)
     thirty_days_ago_date = thirty_days_ago.date()
 
@@ -203,9 +205,10 @@ def get_trends(
 def get_report(
     period: str = Query("weekly", pattern="^(weekly|monthly)$"),
     db: Session = Depends(get_db),
+    student_id: int | None = None,
     current_user: User = Depends(get_current_user),
 ):
-    user_id = current_user.id
+    user_id = resolve_student_id(db, current_user, student_id)
     now = _now()
 
     if period == "weekly":
@@ -391,9 +394,10 @@ def get_report(
 @router.get("/knowledge/mastery")
 def get_knowledge_mastery(
     db: Session = Depends(get_db),
+    student_id: int | None = None,
     current_user: User = Depends(get_current_user),
 ):
-    user_id = current_user.id
+    user_id = resolve_student_id(db, current_user, student_id)
 
     from sqlalchemy.orm import joinedload
 
@@ -445,9 +449,10 @@ def get_knowledge_mastery(
 @router.get("/knowledge/heatmap")
 def get_heatmap(
     db: Session = Depends(get_db),
+    student_id: int | None = None,
     current_user: User = Depends(get_current_user),
 ):
-    user_id = current_user.id
+    user_id = resolve_student_id(db, current_user, student_id)
     thirty_days_ago = _now() - timedelta(days=29)
 
     reviews = (

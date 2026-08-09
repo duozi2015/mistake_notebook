@@ -4,6 +4,7 @@ import type { Question, PaginatedResponse } from '../types'
 export interface QuestionListParams {
   page?: number; page_size?: number; subject?: string; tag?: string
   error_type?: string; status?: string; sort_by?: string; sort_order?: string
+  student_id?: number; due?: boolean
 }
 
 export interface CreateQuestionData {

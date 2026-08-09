@@ -12,7 +12,7 @@ from app.schemas import (
     PaginatedQuestions,
     ImageResponse,
 )
-from app.auth import get_current_user
+from app.auth import get_current_user, resolve_student_id
 
 router = APIRouter(prefix="/api/v1/questions", tags=["错题"])
 
@@ -66,10 +66,20 @@ def list_questions(
     status: str = None,
     sort_by: str = "created_at",
     sort_order: str = "desc",
+    student_id: int | None = None,
+    due: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Question).filter(Question.user_id == current_user.id)
+    user_id = resolve_student_id(db, current_user, student_id)
+    query = db.query(Question).filter(Question.user_id == user_id)
+    if due:
+        # 今日待复习清单（记忆曲线）
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        query = query.filter(
+            Question.status == "active",
+            Question.next_review_date <= now,
+        )
     if subject:
         query = query.filter(Question.subject == subject)
     if error_type:
@@ -134,11 +144,13 @@ def create_question(
 @router.get("/{question_id}", response_model=QuestionResponse)
 def get_question(
     question_id: int,
+    student_id: int | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    user_id = resolve_student_id(db, current_user, student_id)
     q = db.query(Question).filter(
-        Question.id == question_id, Question.user_id == current_user.id
+        Question.id == question_id, Question.user_id == user_id
     ).first()
     if not q:
         raise HTTPException(
