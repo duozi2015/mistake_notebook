@@ -106,11 +106,22 @@ export default function TemplateManagePage() {
     }
   }
 
-  const handleArchive = async (t: TaskTemplate) => {
-    if (!window.confirm(`归档周期任务「${t.name}」？（将不再生成新任务）`)) return
+  const handleStop = async (t: TaskTemplate) => {
+    if (!window.confirm(`停止周期任务「${t.name}」？\n将从明天起删除该任务（今天和历史记录保留）。`)) return
     try {
-      await tasksApi.deleteTemplate(t.id)
-      addToast('已归档', 'success')
+      await tasksApi.stopTemplate(t.id)
+      addToast('已停止', 'success')
+      if (studentId != null) fetchTemplates(studentId)
+    } catch (err: any) {
+      addToast(err.response?.data?.detail?.message || '操作失败', 'error')
+    }
+  }
+
+  const handleResume = async (t: TaskTemplate) => {
+    if (!window.confirm(`恢复周期任务「${t.name}」？\n将从今天开始重新生成该任务。`)) return
+    try {
+      await tasksApi.resumeTemplate(t.id)
+      addToast('已恢复', 'success')
       if (studentId != null) fetchTemplates(studentId)
     } catch (err: any) {
       addToast(err.response?.data?.detail?.message || '操作失败', 'error')
@@ -147,7 +158,9 @@ export default function TemplateManagePage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {templates.map((t) => (
+          {[...templates]
+            .sort((a, b) => (a.status === 'active' ? 0 : 1) - (b.status === 'active' ? 0 : 1))
+            .map((t) => (
             <div key={t.id} className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
@@ -155,6 +168,9 @@ export default function TemplateManagePage() {
                     <CategoryTag category={t.category} />
                     {t.subject && <span className="text-xs text-blue-600 font-medium">{t.subject}</span>}
                     <span className="text-xs px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded">{repeatLabel(t)}</span>
+                    {t.status === 'active'
+                      ? <span className="text-xs px-1.5 py-0.5 bg-green-50 text-green-600 rounded">进行中</span>
+                      : <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">已停止</span>}
                   </div>
                   <div className="text-sm font-medium text-gray-800">{t.name}</div>
                   {t.description && <p className="text-xs text-gray-500 mt-0.5">{t.description}</p>}
@@ -163,8 +179,11 @@ export default function TemplateManagePage() {
                 <div className="flex flex-col gap-1 flex-shrink-0">
                   <button onClick={() => setSheet({ mode: 'edit', template: t })}
                     className="px-3 py-1 bg-gray-50 text-gray-600 rounded-lg text-xs active:bg-gray-100">编辑</button>
-                  <button onClick={() => handleArchive(t)}
-                    className="px-3 py-1 bg-gray-50 text-red-500 rounded-lg text-xs active:bg-red-50">归档</button>
+                  {t.status === 'active'
+                    ? <button onClick={() => handleStop(t)}
+                        className="px-3 py-1 bg-gray-50 text-red-500 rounded-lg text-xs active:bg-red-50">停止</button>
+                    : <button onClick={() => handleResume(t)}
+                        className="px-3 py-1 bg-green-50 text-green-600 rounded-lg text-xs active:bg-green-100">恢复</button>}
                 </div>
               </div>
             </div>
