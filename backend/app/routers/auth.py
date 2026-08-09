@@ -89,11 +89,17 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
         username=data.username,
         password_hash=hash_password(data.password),
         display_name=data.display_name or data.username,
+        role=data.role,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-    return UserResponse(id=user.id, username=user.username, display_name=user.display_name)
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        display_name=user.display_name,
+        role=user.role,
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -110,7 +116,9 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=expires_in,
-        user=UserResponse(id=user.id, username=user.username, display_name=user.display_name),
+        user=UserResponse(
+            id=user.id, username=user.username, display_name=user.display_name, role=user.role
+        ),
     )
 
 
@@ -144,7 +152,9 @@ def refresh(data: RefreshRequest, db: Session = Depends(get_db)):
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=expires_in,
-        user=UserResponse(id=user.id, username=user.username, display_name=user.display_name),
+        user=UserResponse(
+            id=user.id, username=user.username, display_name=user.display_name, role=user.role
+        ),
     )
 
 
@@ -162,6 +172,7 @@ def get_me(current_user: User = Depends(get_current_user)):
         id=current_user.id,
         username=current_user.username,
         display_name=current_user.display_name,
+        role=current_user.role,
     )
 
 

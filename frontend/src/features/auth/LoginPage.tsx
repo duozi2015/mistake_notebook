@@ -24,7 +24,7 @@ export default function LoginPage() {
       localStorage.setItem('refresh_token', data.refresh_token)
       setUser(data.user)
       addToast('登录成功', 'success')
-      navigate('/', { replace: true })
+      navigate(data.user.role === 'parent' ? '/parent' : '/', { replace: true })
     } catch (err: any) {
       setError(err.response?.data?.detail?.message || '登录失败，请检查用户名和密码')
     } finally { setLoading(false) }

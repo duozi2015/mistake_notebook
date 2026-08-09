@@ -1,5 +1,18 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Date,
+    Index,
+    Integer,
+    String,
+    Text,
+    Float,
+    DateTime,
+    ForeignKey,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -16,6 +29,7 @@ class User(Base):
     username = Column(String(50), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     display_name = Column(String(100), default="")
+    role = Column(String(20), nullable=False, server_default="student", default="student")
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
@@ -135,4 +149,96 @@ class InviteCode(Base):
     expires_at = Column(DateTime, nullable=False)
     used = Column(Integer, default=0)  # 0=未使用, 1=已使用
     used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
+
+
+class FamilyBinding(Base):
+    """家长-学生 绑定关系（多对多，两步确认）"""
+    __tablename__ = "family_bindings"
+    __table_args__ = (UniqueConstraint("parent_id", "student_id"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    parent_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String(10), nullable=False, default="pending")  # pending | active
+    created_at = Column(DateTime, default=_utcnow)
+
+
+class TaskTemplate(Base):
+    """任务模板：内容基准 + 周期规则（家长管理）"""
+    __tablename__ = "task_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    category = Column(String(20), nullable=False)  # learning | sports | chores
+    subject = Column(String(20), default="")
+    name = Column(String(100), nullable=False)
+    description = Column(Text, default="")
+    require_evidence = Column(Boolean, nullable=False, default=True)
+    repeat_type = Column(String(10), nullable=False, default="none")  # none | daily | weekly
+    repeat_weekdays = Column(String(50), default="[]")  # JSON [0..6]，0=周一
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=True)
+    status = Column(String(10), nullable=False, default="active")  # active | paused | archived
+    version = Column(Integer, nullable=False, default=0)  # 乐观锁
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class TaskInstance(Base):
+    """某天的具体任务：状态机载体 + 内容快照"""
+    __tablename__ = "task_instances"
+    __table_args__ = (
+        UniqueConstraint("template_id", "task_date"),
+        Index("ix_task_instances_student_date", "student_id", "task_date"),
+        Index("ix_task_instances_status_student", "status", "student_id"),
+        # 每天每生仅一条「自动复习任务」
+        Index(
+            "ix_task_instances_auto_review",
+            "student_id",
+            "task_date",
+            "source",
+            sqlite_where=text("source = 'auto_review'"),
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    template_id = Column(Integer, ForeignKey("task_templates.id"), nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # 家长布置 / 学生自主
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    task_date = Column(Date, nullable=False)
+    category = Column(String(20), nullable=False)
+    subject = Column(String(20), default="")
+    name = Column(String(100), nullable=False)
+    description = Column(Text, default="")
+    require_evidence = Column(Boolean, nullable=False, default=True)
+    source = Column(String(20), nullable=False, default="manual")  # manual | auto_review
+    status = Column(String(10), nullable=False, default="pending")  # pending | submitted | rejected | approved
+    checkin_note = Column(Text, default="")
+    submitted_at = Column(DateTime, nullable=True)
+    reviewed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    rating = Column(Integer, nullable=True)  # 1~5 星
+    review_comment = Column(Text, default="")
+    reviewed_at = Column(DateTime, nullable=True)
+    version = Column(Integer, nullable=False, default=0)  # 乐观锁
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class TaskImage(Base):
+    """任务图片：任务插图 / 完成证据 / 纠错批注。target 为空 = 已上传未挂载。"""
+    __tablename__ = "task_images"
+    __table_args__ = (Index("ix_task_images_target", "target_type", "target_id"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    target_type = Column(String(10), nullable=True)  # template | instance（挂载前为空）
+    target_id = Column(Integer, nullable=True)
+    kind = Column(String(20), nullable=False)  # illustration | evidence | correction
+    file_path = Column(String(500), nullable=False)
+    original_name = Column(String(200), default="")
+    file_size = Column(Integer, default=0)
+    mime_type = Column(String(50), default="image/jpeg")
+    uploaded_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, default=_utcnow)

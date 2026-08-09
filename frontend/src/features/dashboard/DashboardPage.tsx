@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
 import { statisticsApi, type Overview, type ReportData, type ErrorTypeItem, type WeakTagItem } from '../../services/statistics'
 import { reviewApi } from '../../services/reviews'
+import { tasksApi } from '../../services/tasks'
 import type { Question } from '../../types'
 
 type PageState = 'loading' | 'loaded' | 'error'
@@ -16,14 +17,17 @@ export default function DashboardPage() {
   const [report, setReport] = useState<ReportData | null>(null)
   const [reviewQuestions, setReviewQuestions] = useState<Question[]>([])
   const [selectedSubject, setSelectedSubject] = useState('')
+  const [taskTotal, setTaskTotal] = useState(0)
+  const [taskDone, setTaskDone] = useState(0)
 
   const fetchData = useCallback(async () => {
     setPageState('loading')
     try {
-      const [overviewRes, reportRes, reviewRes] = await Promise.allSettled([
+      const [overviewRes, reportRes, reviewRes, taskRes] = await Promise.allSettled([
         statisticsApi.overview(),
         statisticsApi.report(),
         reviewApi.getDaily(),
+        tasksApi.overview(),
       ])
 
       if (overviewRes.status === 'fulfilled') {
@@ -39,6 +43,15 @@ export default function DashboardPage() {
 
       if (reviewRes.status === 'fulfilled' && reviewRes.value.data?.data) {
         setReviewQuestions(reviewRes.value.data.data.slice(0, 5))
+      }
+
+      if (taskRes.status === 'fulfilled') {
+        const d = taskRes.value.data
+        const counts = 'data' in d ? (d.data[0] ?? null) : d
+        if (counts) {
+          setTaskTotal(counts.total)
+          setTaskDone(counts.approved)
+        }
       }
 
       setPageState('loaded')
@@ -147,6 +160,34 @@ export default function DashboardPage() {
             <div className={`text-2xl font-bold ${card.color}`}>{card.value}</div>
           </div>
         ))}
+      </div>
+
+      {/* ── 今日任务 ── */}
+      <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-bold text-gray-800">📋 今日任务</h2>
+          <button
+            onClick={() => navigate('/tasks')}
+            className="text-xs text-blue-600 font-medium min-h-[28px]"
+          >
+            去打卡 &gt;
+          </button>
+        </div>
+        {taskTotal === 0 ? (
+          <p className="text-sm text-gray-400">今天还没有任务</p>
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-green-400 to-green-500 rounded-full"
+                style={{ width: `${(taskDone / taskTotal) * 100}%` }}
+              />
+            </div>
+            <span className="text-sm font-semibold text-gray-700 flex-shrink-0">
+              {taskDone} / {taskTotal}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── Today's review list ── */}

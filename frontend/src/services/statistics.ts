@@ -49,9 +49,9 @@ export interface ReportData {
 }
 
 export const statisticsApi = {
-  overview: () => api.get<Overview>('/statistics/overview'),
-  trends: () => api.get<{ daily: TrendItem[] }>('/statistics/trends'),
-  report: () => api.get<ReportData>('/statistics/report'),
-  mastery: () => api.get<{ data: MasteryItem[] }>('/statistics/knowledge/mastery'),
-  heatmap: () => api.get<{ data: HeatmapItem[] }>('/statistics/knowledge/heatmap'),
+  overview: (studentId?: number) => api.get<Overview>('/statistics/overview', { params: studentId ? { student_id: studentId } : undefined }),
+  trends: (studentId?: number) => api.get<{ daily: TrendItem[] }>('/statistics/trends', { params: studentId ? { student_id: studentId } : undefined }),
+  report: (period?: string, studentId?: number) => api.get<ReportData>('/statistics/report', { params: { period, ...(studentId ? { student_id: studentId } : {}) } }),
+  mastery: (studentId?: number) => api.get<{ data: MasteryItem[] }>('/statistics/knowledge/mastery', { params: studentId ? { student_id: studentId } : undefined }),
+  heatmap: (studentId?: number) => api.get<{ data: HeatmapItem[] }>('/statistics/knowledge/heatmap', { params: studentId ? { student_id: studentId } : undefined }),
 }

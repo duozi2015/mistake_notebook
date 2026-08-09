@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -9,6 +9,7 @@ class UserRegister(BaseModel):
     password: str = Field(min_length=8, max_length=100)
     display_name: str = Field(default="", max_length=100)
     invite_code: str = Field(default="", max_length=20)
+    role: str = Field(default="student", pattern="^(student|parent)$")
 
 
 class UserLogin(BaseModel):
@@ -20,6 +21,7 @@ class UserResponse(BaseModel):
     id: int
     username: str
     display_name: str
+    role: str
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -138,3 +140,180 @@ class InviteCodeResponse(BaseModel):
 class AdminSettingsResponse(BaseModel):
     registration_mode: str
     invite_code: InviteCodeResponse | None = None
+
+
+# === 家庭绑定 ===
+class FamilyBindRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=50)
+
+
+class FamilyBindResponse(BaseModel):
+    id: int
+    parent_id: int
+    student_id: int
+    student_username: str
+    student_display_name: str
+    status: str
+
+
+class FamilyChildResponse(BaseModel):
+    id: int
+    student_id: int
+    username: str
+    display_name: str
+    status: str
+    created_at: datetime
+
+
+class FamilyRequestResponse(BaseModel):
+    id: int
+    parent_id: int
+    username: str
+    display_name: str
+
+
+class FamilyParentResponse(BaseModel):
+    id: int
+    parent_id: int
+    username: str
+    display_name: str
+    status: str
+
+
+# === 任务 ===
+CATEGORY_PATTERN = "^(learning|sports|chores)$"
+
+
+class TaskImageResponse(BaseModel):
+    id: int
+    kind: str
+    file_path: str
+    mime_type: str
+    file_size: int
+    original_name: str
+
+
+class TaskTemplateCreate(BaseModel):
+    student_id: int
+    category: str = Field(..., pattern=CATEGORY_PATTERN)
+    subject: str = ""
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str = ""
+    require_evidence: bool = True
+    repeat_type: str = Field("none", pattern="^(none|daily|weekly)$")
+    repeat_weekdays: list[int] = []
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    illustration_image_ids: list[int] = []
+
+
+class TaskTemplateUpdate(BaseModel):
+    category: Optional[str] = Field(default=None, pattern=CATEGORY_PATTERN)
+    subject: Optional[str] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    require_evidence: Optional[bool] = None
+    repeat_type: Optional[str] = Field(default=None, pattern="^(none|daily|weekly)$")
+    repeat_weekdays: Optional[list[int]] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    status: Optional[str] = Field(default=None, pattern="^(active|paused|archived)$")
+    illustration_image_ids: Optional[list[int]] = None
+    version: Optional[int] = None
+
+
+class TaskTemplateResponse(BaseModel):
+    id: int
+    created_by_id: int
+    student_id: int
+    category: str
+    subject: str
+    name: str
+    description: str
+    require_evidence: bool
+    repeat_type: str
+    repeat_weekdays: list[int]
+    start_date: Optional[date]
+    end_date: Optional[date]
+    status: str
+    version: int
+    images: list[TaskImageResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+
+class TaskInstanceCreate(BaseModel):
+    student_id: int
+    date: date
+    category: str = Field(..., pattern=CATEGORY_PATTERN)
+    subject: str = ""
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str = ""
+    require_evidence: bool = True
+    illustration_image_ids: list[int] = []
+
+
+class TaskInstanceUpdate(BaseModel):
+    category: Optional[str] = Field(default=None, pattern=CATEGORY_PATTERN)
+    subject: Optional[str] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    require_evidence: Optional[bool] = None
+    illustration_image_ids: Optional[list[int]] = None
+    version: Optional[int] = None
+
+
+class TaskInstanceResponse(BaseModel):
+    id: int
+    template_id: Optional[int]
+    created_by_id: Optional[int]
+    student_id: int
+    task_date: date
+    category: str
+    subject: str
+    name: str
+    description: str
+    require_evidence: bool
+    source: str
+    status: str
+    checkin_note: str
+    submitted_at: Optional[datetime]
+    reviewed_by_id: Optional[int]
+    rating: Optional[int]
+    review_comment: str
+    reviewed_at: Optional[datetime]
+    version: int
+    images: list[TaskImageResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+
+class CheckinSubmit(BaseModel):
+    note: str = ""
+    evidence_image_ids: list[int] = []
+
+
+class ReviewRequest(BaseModel):
+    result: str = Field(..., pattern="^(approved|rejected)$")
+    rating: Optional[int] = Field(default=None, ge=1, le=5)
+    comment: str = ""
+    correction_image_ids: list[int] = []
+    version: Optional[int] = None
+
+
+class CopyRequest(BaseModel):
+    student_id: int
+    target_date: Optional[date] = Field(default=None, alias="date")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class OverviewItem(BaseModel):
+    student_id: int
+    username: str
+    display_name: str
+    total: int
+    pending: int
+    submitted: int
+    rejected: int
+    approved: int

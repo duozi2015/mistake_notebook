@@ -1,13 +1,22 @@
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '../../stores/authStore'
+import { useToastStore } from '../../stores/toastStore'
 import { authApi } from '../../services/auth'
+import { familyApi } from '../../services/tasks'
 import AdminPanel from './AdminPanel'
+
+function msgOf(err: unknown): string {
+  return err && typeof err === 'object' && 'response' in err
+    ? (err as { response: { data?: { detail?: { message?: string } } } }).response?.data?.detail?.message ?? ''
+    : ''
+}
 
 type UserState = 'loading' | 'loaded' | 'error'
 type PageState = 'idle' | 'passwordChanging' | 'passwordSuccess' | 'passwordError'
 
 export default function SettingsPage() {
   const { user, setUser, logout } = useAuthStore()
+  const addToast = useToastStore((s) => s.addToast)
   const [userState, setUserState] = useState<UserState>(user ? 'loaded' : 'loading')
 
   // 从后端获取用户信息
@@ -20,6 +29,35 @@ export default function SettingsPage() {
       })
       .catch(() => setUserState(user ? 'loaded' : 'error'))
   }, [])
+
+  // ── 家庭：待确认请求 + 已绑定家长 ──
+  const [parentRequests, setParentRequests] = useState<{ id: number; username: string; display_name: string }[]>([])
+  const [myParents, setMyParents] = useState<{ id: number; username: string; display_name: string; status: string }[]>([])
+
+  const refreshFamily = () => {
+    familyApi.requests().then((r) => setParentRequests(r.data)).catch(() => {})
+    familyApi.me().then((r) => setMyParents(r.data)).catch(() => {})
+  }
+  useEffect(() => { refreshFamily() }, [])
+
+  const handleConfirm = async (id: number) => {
+    try {
+      await familyApi.confirm(id)
+      addToast('已同意绑定', 'success')
+      refreshFamily()
+    } catch (err: unknown) {
+      addToast(msgOf(err) || '操作失败', 'error')
+    }
+  }
+  const handleReject = async (id: number) => {
+    try {
+      await familyApi.unbind(id)
+      addToast('已拒绝', 'info')
+      refreshFamily()
+    } catch (err: unknown) {
+      addToast(msgOf(err) || '操作失败', 'error')
+    }
+  }
 
   // Password change form state
   const [pageState, setPageState] = useState<PageState>('idle')
@@ -266,6 +304,60 @@ export default function SettingsPage() {
           <span className="text-base">🚪</span>
           <span>退出登录</span>
         </button>
+      </div>
+
+      {/* ── 家庭 ── */}
+      <div className="bg-white rounded-xl p-5 shadow-sm mb-4">
+        <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
+          家庭
+        </h2>
+
+        {parentRequests.length > 0 && (
+          <div className="mb-3">
+            <div className="text-xs text-gray-500 mb-2">待确认的绑定请求</div>
+            {parentRequests.map((r) => (
+              <div key={r.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-xl mb-2">
+                <div>
+                  <div className="text-sm text-gray-800 font-medium">👨‍👩‍👧 {r.display_name || r.username}</div>
+                  <div className="text-xs text-gray-400">请求与你关联</div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => handleConfirm(r.id)} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium active:bg-green-700">
+                    同意
+                  </button>
+                  <button onClick={() => handleReject(r.id)} className="px-3 py-1.5 bg-gray-200 text-gray-600 rounded-lg text-xs font-medium active:bg-gray-300">
+                    拒绝
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {myParents.length === 0 ? (
+          <p className="text-sm text-gray-400">暂无绑定家长</p>
+        ) : (
+          <div className="space-y-2">
+            {myParents.map((p) => (
+              <div key={p.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                <div>
+                  <div className="text-sm text-gray-800 font-medium">👨‍👩‍👧 {p.display_name || p.username}</div>
+                  <div className="text-xs text-gray-400">{p.username}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${p.status === 'active' ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600'}`}>
+                    {p.status === 'active' ? '已关联' : '待确认'}
+                  </span>
+                  {p.status === 'active' && (
+                    <button onClick={() => handleReject(p.id)} className="text-xs text-red-500 px-2 py-1 rounded-lg bg-red-50 active:bg-red-100">
+                      解绑
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Admin section (仅管理员 doudou 可见) ── */}

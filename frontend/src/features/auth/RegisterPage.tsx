@@ -4,7 +4,7 @@ import { authApi } from '../../services/auth'
 import { useToastStore } from '../../stores/toastStore'
 
 export default function RegisterPage() {
-  const [form, setForm] = useState({ username: '', displayName: '', password: '', confirmPassword: '', inviteCode: '' })
+  const [form, setForm] = useState({ username: '', displayName: '', password: '', confirmPassword: '', inviteCode: '', role: 'student' as 'student' | 'parent' })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -41,6 +41,7 @@ export default function RegisterPage() {
         password: form.password,
         display_name: form.displayName.trim() || undefined,
         invite_code: form.inviteCode.trim() || undefined,
+        role: form.role,
       })
       setSuccess(true)
       addToast('注册成功，请登录', 'success')
@@ -74,6 +75,27 @@ export default function RegisterPage() {
           <p className="text-gray-500 mt-1">首次使用，请注册管理员账号</p>
         </div>
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">账号类型</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { v: 'student', label: '🎓 学生', hint: '错题本 + 任务打卡' },
+                { v: 'parent', label: '👨‍👩‍👧 家长', hint: '布置/检查任务' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setForm({ ...form, role: opt.v })}
+                  className={`rounded-xl border-2 p-3 text-left transition-colors ${
+                    form.role === opt.v ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'
+                  }`}
+                >
+                  <div className="text-sm font-semibold text-gray-800">{opt.label}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">{opt.hint}</div>
+                </button>
+              ))}
+            </div>
+          </div>
           <FormField label="用户名" error={errors.username} placeholder="3-20位字符" value={form.username} onChange={(v) => setForm({ ...form, username: v })} />
           <FormField label="显示名称" error={errors.displayName} placeholder="页面顶部显示的名称" value={form.displayName} onChange={(v) => setForm({ ...form, displayName: v })} />
           {regMode === 'invite_only' && (

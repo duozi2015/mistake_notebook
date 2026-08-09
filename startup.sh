@@ -33,4 +33,19 @@ else
     nginx 2>/dev/null && echo "Nginx 已启动" >> "$LOG_DIR/startup.log"
 fi
 
+# 3. 注册数据库备份定时任务（幂等：每天 00:00 自动备份，保留 15 份）
+BACKUP_PLIST="$PROJECT_DIR/com.mistake-notebook.backup.plist"
+LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
+if [ -f "$BACKUP_PLIST" ]; then
+    mkdir -p "$LAUNCH_AGENTS_DIR"
+    cp -f "$BACKUP_PLIST" "$LAUNCH_AGENTS_DIR/"
+    if launchctl list 2>/dev/null | grep -q "com.mistake-notebook.backup"; then
+        echo "备份定时任务已在运行" >> "$LOG_DIR/startup.log"
+    else
+        launchctl load -w "$LAUNCH_AGENTS_DIR/com.mistake-notebook.backup.plist" 2>/dev/null \
+            && echo "备份定时任务已注册" >> "$LOG_DIR/startup.log" \
+            || echo "备份定时任务注册失败（launchctl）" >> "$LOG_DIR/startup.log"
+    fi
+fi
+
 echo "=== 启动完成 ===" >> "$LOG_DIR/startup.log"

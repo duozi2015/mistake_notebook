@@ -5,17 +5,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.database import engine, Base
+from app.database import engine
 from app.config import settings
-from app.routers import auth, questions, images, reviews, ocr, variants, export, statistics, admin
+from app.migrations import run_migrations
+from app.routers import auth, questions, images, reviews, ocr, variants, export, statistics, admin, family, tasks, achievements
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时：创建表 + 上传目录
-    Base.metadata.create_all(bind=engine)
+    # 启动时：执行数据库迁移（建新表 + 存量表加列，幂等非破坏）+ 上传目录
+    run_migrations(engine)
     os.makedirs("uploads/temp", exist_ok=True)
     os.makedirs("uploads/questions", exist_ok=True)
+    os.makedirs("uploads/tasks", exist_ok=True)
     yield
 
 
@@ -39,6 +41,9 @@ app.include_router(ocr.router)
 app.include_router(variants.router)
 app.include_router(export.router)
 app.include_router(admin.router)
+app.include_router(family.router)
+app.include_router(tasks.router)
+app.include_router(achievements.router)
 
 
 def _get_git_commit():
