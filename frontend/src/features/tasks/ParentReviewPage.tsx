@@ -4,6 +4,7 @@ import { useToastStore } from '../../stores/toastStore'
 import BottomSheet from '../../components/Shared/BottomSheet'
 import CategoryTag from './components/CategoryTag'
 import Thumbnails from './components/Thumbnails'
+import TaskTimeInfo from './components/TaskTimeInfo'
 import StarsPicker from './components/StarsPicker'
 import ImagePicker, { type PickedImage } from './components/ImagePicker'
 import { toLocalDateStr } from '../../utils/format'
@@ -104,9 +105,7 @@ export default function ParentReviewPage() {
               </div>
               <div className="text-sm font-medium text-gray-800 mb-1">{t.name}</div>
               {t.checkin_note && <p className="text-xs text-gray-500 mb-1">📝 {t.checkin_note}</p>}
-              {t.estimated_minutes != null && t.actual_minutes != null && (
-                <p className="text-xs text-gray-400 mb-1">⏱ 预计 {t.estimated_minutes} 分钟 · 实际 {t.actual_minutes} 分钟</p>
-              )}
+              <TaskTimeInfo task={t} />
               <Thumbnails images={t.images.filter((i) => i.kind === 'evidence')} size={20} />
               <div className="flex gap-2 mt-3">
                 <button onClick={() => open(t, 'approve')} className="flex-1 py-2 bg-green-600 text-white rounded-xl text-sm font-medium active:bg-green-700">
