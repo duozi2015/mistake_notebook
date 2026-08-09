@@ -52,7 +52,8 @@ export const tasksApi = {
   createTemplate: (data: TemplatePayload) => api.post<TaskTemplate>('/tasks/templates', data),
   updateTemplate: (id: number, data: Partial<TemplatePayload>) =>
     api.put<TaskTemplate>(`/tasks/templates/${id}`, data),
-  deleteTemplate: (id: number) => api.delete(`/tasks/templates/${id}`),
+  stopTemplate: (id: number) => api.delete(`/tasks/templates/${id}`),
+  resumeTemplate: (id: number) => api.post<TaskTemplate>(`/tasks/templates/${id}/resume`),
   daily: (params: { date?: string; student_id?: number }) =>
     api.get<TaskInstance[]>('/tasks/daily', { params }),
   create: (data: InstancePayload) => api.post<TaskInstance>('/tasks/daily', data),

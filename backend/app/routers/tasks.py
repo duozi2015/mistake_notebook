@@ -7,7 +7,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -300,7 +300,10 @@ def list_templates(
     rows = (
         db.query(TaskTemplate)
         .filter(TaskTemplate.student_id == student_id)
-        .order_by(TaskTemplate.created_at.desc())
+        .order_by(
+            case((TaskTemplate.status == "active", 0), else_=1),
+            TaskTemplate.created_at.desc(),
+        )
         .all()
     )
     return [_template_response(db, t) for t in rows]
@@ -379,21 +382,54 @@ def update_template(
 
 
 @router.delete("/templates/{template_id}")
-def delete_template(
+def stop_template(
     template_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_parent),
 ):
+    """停止周期任务：不再生成新任务，并删除「明天起」已生成的实例（今天与历史保留）。"""
     t = db.get(TaskTemplate, template_id)
     if not t:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "NOT_FOUND", "message": "模板不存在"},
+            detail={"code": "NOT_FOUND", "message": "周期任务不存在"},
         )
     _require_bound_student(db, current_user, t.student_id)
-    t.status = "archived"
+    today = task_generation.local_today()
+    db.query(TaskInstance).filter(
+        TaskInstance.template_id == t.id,
+        TaskInstance.task_date > today,
+    ).delete(synchronize_session=False)
+    t.status = "paused"
+    t.updated_at = _utcnow()
     db.commit()
-    return {"message": "已归档"}
+    return {"message": "已停止"}
+
+
+@router.post("/templates/{template_id}/resume", response_model=TaskTemplateResponse)
+def resume_template(
+    template_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_parent),
+):
+    """恢复周期任务：从今天起重新生成（不补生成历史缺失的天）。"""
+    t = db.get(TaskTemplate, template_id)
+    if not t:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "NOT_FOUND", "message": "周期任务不存在"},
+        )
+    _require_bound_student(db, current_user, t.student_id)
+    today = task_generation.local_today()
+    t.status = "active"
+    t.start_date = today
+    t.version += 1
+    t.updated_at = _utcnow()
+    db.commit()
+    db.refresh(t)
+    # 确保今天（及今天之前已恢复的天）实例存在
+    task_generation.ensure_instances(db, t.student_id, today)
+    return _template_response(db, t)
 
 
 # ── 每日任务 ───────────────────────────────────────────────────────────

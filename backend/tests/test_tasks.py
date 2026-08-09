@@ -141,6 +141,53 @@ def test_template_start_date_in_future_no_instance(env):
     assert not any(i["name"] == "跳绳" for i in items)
 
 
+def test_stop_template_keeps_today_and_history_deletes_future(env):
+    t = env["client"].post(
+        "/api/v1/tasks/templates",
+        json={"student_id": env["student"].id, "category": "learning", "name": "每日一读", "repeat_type": "daily"},
+        headers=env["ph"],
+    ).json()
+    tomorrow = TODAY + timedelta(days=1)
+    env["client"].get(f"/api/v1/tasks/daily?student_id={env['student'].id}&date={tomorrow.isoformat()}", headers=env["ph"])
+    env["client"].get(f"/api/v1/tasks/daily?student_id={env['student'].id}&date={TODAY.isoformat()}", headers=env["ph"])
+    resp = env["client"].delete(f"/api/v1/tasks/templates/{t['id']}", headers=env["ph"])
+    assert resp.status_code == 200
+    assert resp.json()["message"] == "已停止"
+    today_items = env["client"].get(f"/api/v1/tasks/daily?student_id={env['student'].id}&date={TODAY.isoformat()}", headers=env["ph"]).json()
+    tomorrow_items = env["client"].get(f"/api/v1/tasks/daily?student_id={env['student'].id}&date={tomorrow.isoformat()}", headers=env["ph"]).json()
+    assert any(i["name"] == "每日一读" for i in today_items)  # 今天保留
+    assert not any(i["name"] == "每日一读" for i in tomorrow_items)  # 明天已删
+
+
+def test_resume_template_restarts_from_today(env):
+    t = env["client"].post(
+        "/api/v1/tasks/templates",
+        json={"student_id": env["student"].id, "category": "chores", "name": "扫地", "repeat_type": "daily",
+              "start_date": (TODAY - timedelta(days=5)).isoformat()},
+        headers=env["ph"],
+    ).json()
+    env["client"].delete(f"/api/v1/tasks/templates/{t['id']}", headers=env["ph"])
+    resp = env["client"].post(f"/api/v1/tasks/templates/{t['id']}/resume", headers=env["ph"])
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "active"
+    assert resp.json()["start_date"] == TODAY.isoformat()  # 从今天起，不补历史
+    today_items = env["client"].get(f"/api/v1/tasks/daily?student_id={env['student'].id}&date={TODAY.isoformat()}", headers=env["ph"]).json()
+    assert any(i["name"] == "扫地" for i in today_items)
+    past = TODAY - timedelta(days=5)
+    past_items = env["client"].get(f"/api/v1/tasks/daily?student_id={env['student'].id}&date={past.isoformat()}", headers=env["ph"]).json()
+    assert not any(i["name"] == "扫地" for i in past_items)  # 未补历史
+
+
+def test_templates_list_active_first(env):
+    env["client"].post("/api/v1/tasks/templates", json={"student_id": env["student"].id, "category": "learning", "name": "进行中A", "repeat_type": "daily"}, headers=env["ph"]).json()
+    stopped = env["client"].post("/api/v1/tasks/templates", json={"student_id": env["student"].id, "category": "chores", "name": "已停止B", "repeat_type": "daily"}, headers=env["ph"]).json()
+    env["client"].delete(f"/api/v1/tasks/templates/{stopped['id']}", headers=env["ph"])
+    items = env["client"].get(f"/api/v1/tasks/templates?student_id={env['student'].id}", headers=env["ph"]).json()
+    names = [i["name"] for i in items]
+    assert names[0] == "进行中A"
+    assert names.index("已停止B") > names.index("进行中A")
+
+
 def test_archived_template_stops_generating(env):
     t = env["client"].post(
         "/api/v1/tasks/templates",
