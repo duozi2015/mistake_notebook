@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { familyApi, tasksApi } from '../../services/tasks'
 import { useToastStore } from '../../stores/toastStore'
 import CategoryTag from './components/CategoryTag'
@@ -6,10 +7,19 @@ import Thumbnails from './components/Thumbnails'
 import TaskFormSheet, { type TaskFormValues } from './components/TaskFormSheet'
 import { STATUS_LABELS, statusRank } from './constants'
 import { toLocalDateStr } from '../../utils/format'
-import type { FamilyChild, TaskInstance } from '../../types'
+import type { FamilyChild, TaskInstance, TaskStatus } from '../../types'
+
+const STATUS_OPTIONS: [TaskStatus | 'all', string][] = [
+  ['all', '全部'],
+  ['pending', '待完成'],
+  ['submitted', '待检查'],
+  ['rejected', '需修改'],
+  ['approved', '已完成'],
+]
 
 export default function TaskManagePage() {
   const addToast = useToastStore((s) => s.addToast)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [children, setChildren] = useState<FamilyChild[]>([])
   const [studentId, setStudentId] = useState<number | null>(null)
   const [dateStr, setDateStr] = useState(() => toLocalDateStr(new Date()))
@@ -18,6 +28,18 @@ export default function TaskManagePage() {
   const [sheet, setSheet] = useState<{ mode: 'add' | 'edit'; task?: TaskInstance } | null>(null)
   const [saving, setSaving] = useState(false)
   const [copying, setCopying] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>(() => {
+    const s = searchParams.get('status')
+    return s === 'pending' || s === 'submitted' || s === 'rejected' || s === 'approved' ? s : 'all'
+  })
+
+  const applyStatusFilter = (v: TaskStatus | 'all') => {
+    setStatusFilter(v)
+    const next = new URLSearchParams(searchParams)
+    if (v === 'all') next.delete('status')
+    else next.set('status', v)
+    setSearchParams(next, { replace: true })
+  }
 
   useEffect(() => {
     familyApi.children().then((res) => {
@@ -46,12 +68,14 @@ export default function TaskManagePage() {
   const grouped = useMemo(() => {
     // 未完成(待完成/待检查/需修改)在前，已完成在后；同状态内按分类
     const categoryOrder: Record<string, number> = { learning: 0, sports: 1, chores: 2 }
-    return [...tasks].sort((a, b) => {
-      const sr = statusRank(a.status) - statusRank(b.status)
-      if (sr !== 0) return sr
-      return categoryOrder[a.category] - categoryOrder[b.category]
-    })
-  }, [tasks])
+    return tasks
+      .filter((t) => statusFilter === 'all' || t.status === statusFilter)
+      .sort((a, b) => {
+        const sr = statusRank(a.status) - statusRank(b.status)
+        if (sr !== 0) return sr
+        return categoryOrder[a.category] - categoryOrder[b.category]
+      })
+  }, [tasks, statusFilter])
 
   const handleAdd = async (values: TaskFormValues) => {
     if (studentId == null) {
@@ -177,7 +201,7 @@ export default function TaskManagePage() {
       </div>
 
       {/* 操作按钮 */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-3">
         <button
           onClick={() => setSheet({ mode: 'add' })}
           className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium active:bg-blue-700"
@@ -193,6 +217,21 @@ export default function TaskManagePage() {
         </button>
       </div>
 
+      {/* 状态过滤 */}
+      <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 -mx-1 px-1">
+        {STATUS_OPTIONS.map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => applyStatusFilter(v)}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ${
+              statusFilter === v ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {children.length === 0 ? (
         <div className="text-center py-16 text-gray-400 text-sm">请先在「设置」中关联孩子</div>
       ) : loading ? (
@@ -202,7 +241,9 @@ export default function TaskManagePage() {
       ) : grouped.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-5xl mb-3">📭</div>
-          <p className="text-gray-400 text-sm">当天没有任务，点「新增任务」或「复制昨日」</p>
+          <p className="text-gray-400 text-sm">
+            {statusFilter === 'all' ? '当天没有任务，点「新增任务」或「复制昨日」' : '没有该状态的任务'}
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
