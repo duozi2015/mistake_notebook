@@ -62,13 +62,9 @@ def test_migration_is_idempotent(legacy_engine):
         assert cols.count("role") == 1
 
 
-def test_migration_creates_new_tables_and_auto_review_index(legacy_engine):
+def test_migration_creates_new_tables(legacy_engine):
     run_migrations(legacy_engine)
     with legacy_engine.connect() as conn:
         tables = [r[0] for r in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
         for t in ["family_bindings", "task_templates", "task_instances", "task_images"]:
             assert t in tables
-        idx_sql = conn.exec_driver_sql(
-            "SELECT sql FROM sqlite_master WHERE name = 'ix_task_instances_auto_review'"
-        ).fetchone()
-        assert idx_sql and "source = 'auto_review'" in idx_sql[0]

@@ -1,6 +1,7 @@
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 sqlalchemy==2.0.30
+pymysql==1.1.1
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 # passlib 1.7.4 与 bcrypt>=4.1 不兼容（登录会报错），锁定 4.0.1

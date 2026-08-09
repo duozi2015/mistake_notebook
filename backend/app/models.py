@@ -11,7 +11,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     UniqueConstraint,
-    text,
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -194,14 +193,8 @@ class TaskInstance(Base):
         UniqueConstraint("template_id", "task_date"),
         Index("ix_task_instances_student_date", "student_id", "task_date"),
         Index("ix_task_instances_status_student", "status", "student_id"),
-        # 每天每生仅一条「自动复习任务」
-        Index(
-            "ix_task_instances_auto_review",
-            "student_id",
-            "task_date",
-            "source",
-            sqlite_where=text("source = 'auto_review'"),
-        ),
+        # 注：每天每生仅一条「自动复习任务」由应用层 ensure_auto_review 保证
+        #（部分唯一索引 sqlite_where 非 MySQL 可移植，故不建 DB 级约束）
     )
 
     id = Column(Integer, primary_key=True, index=True)
