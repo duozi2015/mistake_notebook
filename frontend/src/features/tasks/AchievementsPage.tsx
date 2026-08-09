@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { achievementsApi } from '../../services/tasks'
 import { useAuthStore } from '../../stores/authStore'
+import { isNearAchievement, nearAchievements } from './achievements'
 import type { Achievement } from '../../types'
 
 export default function AchievementsPage() {
@@ -14,12 +15,15 @@ export default function AchievementsPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const unlocked = items.filter((i) => i.unlocked).length
-  const near = items.filter((i) => !i.unlocked && i.progress > 0 && i.progress_pct >= 80)
-  const sorted = [
-    ...items.filter((i) => i.unlocked),
-    ...items.filter((i) => !i.unlocked).sort((a, b) => b.progress_pct - a.progress_pct),
-  ]
+  const { unlocked, near, sorted } = useMemo(() => {
+    const unlocked = items.filter((i) => i.unlocked).length
+    const near = nearAchievements(items)
+    const sorted = [
+      ...items.filter((i) => i.unlocked),
+      ...items.filter((i) => !i.unlocked).sort((a, b) => b.progress_pct - a.progress_pct),
+    ]
+    return { unlocked, near, sorted }
+  }, [items])
 
   return (
     <div className="pb-6">
@@ -68,7 +72,7 @@ export default function AchievementsPage() {
 
           <div className="grid grid-cols-2 gap-2.5">
             {sorted.map((a) => {
-              const isNear = !a.unlocked && a.progress > 0 && a.progress_pct >= 80
+              const isNear = isNearAchievement(a)
               return (
                 <div key={a.code} className={`rounded-2xl p-3.5 shadow-sm ${a.unlocked ? 'bg-white' : isNear ? 'bg-orange-50 ring-1 ring-orange-200' : 'bg-gray-50'}`}>
                   <div className={`text-3xl mb-1.5 ${a.unlocked ? '' : isNear ? 'animate-pulse' : 'opacity-30 grayscale'}`}>{a.emoji}</div>

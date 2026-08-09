@@ -4,15 +4,9 @@ import { useToastStore } from '../../stores/toastStore'
 import CategoryTag from './components/CategoryTag'
 import Thumbnails from './components/Thumbnails'
 import TaskFormSheet, { type TaskFormValues } from './components/TaskFormSheet'
-import { STATUS_LABELS } from './constants'
+import { STATUS_LABELS, statusRank } from './constants'
+import { toLocalDateStr } from '../../utils/format'
 import type { FamilyChild, TaskInstance } from '../../types'
-
-function toLocalDateStr(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
 
 export default function TaskManagePage() {
   const addToast = useToastStore((s) => s.addToast)
@@ -51,7 +45,6 @@ export default function TaskManagePage() {
 
   const grouped = useMemo(() => {
     // 未完成(待完成/待检查/需修改)在前，已完成在后；同状态内按分类
-    const statusRank = (s: string) => (s === 'approved' ? 1 : 0)
     const categoryOrder: Record<string, number> = { learning: 0, sports: 1, chores: 2 }
     return [...tasks].sort((a, b) => {
       const sr = statusRank(a.status) - statusRank(b.status)

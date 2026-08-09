@@ -6,11 +6,10 @@ import { reviewApi } from '../../services/reviews'
 import { tasksApi, achievementsApi } from '../../services/tasks'
 import ChallengeCard from '../tasks/components/ChallengeCard'
 import CategoryTag from '../tasks/components/CategoryTag'
+import { STATUS_LABELS, statusRank } from '../tasks/constants'
 import type { Achievement, Question, TaskInstance } from '../../types'
 
 type PageState = 'loading' | 'loaded' | 'error'
-
-const STATUS_LABELS: Record<string, string> = { pending: '待完成', submitted: '待检查', rejected: '需修改', approved: '已完成' }
 
 export default function DashboardPage() {
   const navigate = useNavigate()
@@ -26,24 +25,21 @@ export default function DashboardPage() {
   const fetchData = useCallback(async () => {
     setPageState('loading')
     try {
-      const [overviewRes, reportRes, reviewRes, taskRes, badgeRes] = await Promise.allSettled([
-        statisticsApi.overview(),
+      const [reportRes, reviewRes, taskRes, badgeRes] = await Promise.allSettled([
         statisticsApi.report(),
         reviewApi.getDaily(),
         tasksApi.daily({}),
         achievementsApi.list(),
       ])
 
-      if (overviewRes.status === 'fulfilled') {
-        // 错题总览成功即视为可用（重设计后首页不再展示错题统计卡，仅作加载门槛）
-      } else {
+      if (taskRes.status !== 'fulfilled') {
         setPageState('error')
         return
       }
 
       if (reportRes.status === 'fulfilled') setReport(reportRes.value.data)
       if (reviewRes.status === 'fulfilled' && reviewRes.value.data?.data) setReviewQuestions(reviewRes.value.data.data.slice(0, 5))
-      if (taskRes.status === 'fulfilled') setTasks(taskRes.value.data)
+      setTasks(taskRes.value.data)
       if (badgeRes.status === 'fulfilled') setBadges(badgeRes.value.data.data)
       setPageState('loaded')
     } catch {
@@ -62,8 +58,7 @@ export default function DashboardPage() {
 
   // 待办/待检查/需修改 优先展示
   const taskList = useMemo(() => {
-    const rank = (s: string) => (s === 'approved' ? 1 : 0)
-    return [...tasks].sort((a, b) => rank(a.status) - rank(b.status)).slice(0, 6)
+    return [...tasks].sort((a, b) => statusRank(a.status) - statusRank(b.status)).slice(0, 6)
   }, [tasks])
 
   const subjects = useMemo(

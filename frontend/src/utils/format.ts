@@ -7,6 +7,19 @@ export function formatDate(dateStr: string): string {
   }
 }
 
+/** 本地 YYYY-MM-DD（与任务日期字段一致） */
+export function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/** 分钟输入钳制（1~1440，沿用任务时间字段约束） */
+export function clampMinutes(v: number): number {
+  return Math.min(Math.max(v, 1), 1440)
+}
+
 export function getQualityLabel(quality: number): string {
   const labels = ['Again', 'Hard', 'Medium', 'Good', 'Very', 'Easy']
   return labels[quality] || 'Unknown'

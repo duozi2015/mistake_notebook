@@ -12,9 +12,9 @@ api.interceptors.response.use(
   (res) => res,
   async (error) => {
     if (error.response?.status === 401) {
-      const url = error.config?.url ?? ''
-      // 登录/注册失败是业务错误（账号或密码不正确），交给页面展示，不做会话过期跳转
-      if (url.includes('/auth/login') || url.includes('/auth/register')) {
+      // 只有携带了 Authorization 的请求才可能代表「会话过期」；未携带（登录/注册等）是业务错误，
+      // 交给页面展示（如「用户名或密码不正确」），不触发会话过期跳转
+      if (!error.config?.headers?.Authorization) {
         return Promise.reject(error)
       }
       const refreshToken = localStorage.getItem('refresh_token')

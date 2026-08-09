@@ -22,3 +22,8 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
 }
 
 export const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+
+/** 任务状态排序：未完成(待完成/待检查/需修改)在前，已完成(approved)在后 */
+export function statusRank(s: TaskStatus): number {
+  return s === 'approved' ? 1 : 0
+}
