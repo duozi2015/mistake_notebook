@@ -270,20 +270,10 @@ export default function StatisticsPage() {
         })}
       </div>
 
-      {/* 近14天完成趋势 */}
+      {/* 近14天完成趋势（折线图） */}
       <div className="bg-white rounded-xl p-4 shadow-sm mb-3">
         <h3 className="text-xs font-bold text-gray-500 mb-2">近14天完成任务趋势</h3>
-        <div className="flex items-end gap-[3px] h-20">
-          {taskStats.trend.map((x) => (
-            <div key={x.date} className="flex-1 flex flex-col items-center justify-end h-full">
-              <div
-                className="w-full max-w-[14px] bg-gradient-to-t from-green-500 to-green-400 rounded-t-sm"
-                style={{ height: `${Math.max((x.count / taskStats.maxTrend) * 64, x.count ? 4 : 1)}px` }}
-                title={`${x.date}: ${x.count}`}
-              />
-            </div>
-          ))}
-        </div>
+        <TrendLine data={taskStats.trend} maxValue={taskStats.maxTrend} />
       </div>
 
       {/* 预计 vs 实际耗时 */}
@@ -525,6 +515,54 @@ export default function StatisticsPage() {
           </ul>
         </div>
       )}
+    </div>
+  )
+}
+
+/** 简单折线图：完成任务趋势（内联 SVG，含渐变面积与数据点） */
+function TrendLine({ data, maxValue }: { data: { date: string; count: number }[]; maxValue: number }) {
+  const W = 320
+  const H = 120
+  const PAD = 10
+  const n = data.length
+  if (n === 0) return <div className="h-24 text-center text-xs text-gray-400 pt-8">暂无数据</div>
+
+  const max = Math.max(maxValue, 1)
+  const stepX = n > 1 ? (W - PAD * 2) / (n - 1) : 0
+  const pts = data.map((d, i) => ({
+    x: PAD + i * stepX,
+    y: H - PAD - (d.count / max) * (H - PAD * 2),
+    count: d.count,
+    date: d.date,
+  }))
+  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+  const area = `${line} L${pts[n - 1].x.toFixed(1)},${H - PAD} L${pts[0].x.toFixed(1)},${H - PAD} Z`
+
+  const labelAt = (i: number) => data[i]?.date.slice(5) ?? ''
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
+        <defs>
+          <linearGradient id="trendArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill="url(#trendArea)" />
+        <path d={line} fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {pts.map((p, i) => (
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r="3" fill="#fff" stroke="#22c55e" strokeWidth="2" />
+            <title>{`${p.date}: ${p.count}`}</title>
+          </g>
+        ))}
+      </svg>
+      <div className="flex justify-between text-[10px] text-gray-400 mt-1 px-1">
+        <span>{labelAt(0)}</span>
+        <span>{labelAt(Math.floor(n / 2))}</span>
+        <span>{labelAt(n - 1)}</span>
+      </div>
     </div>
   )
 }
