@@ -325,3 +325,23 @@ class OverviewItem(BaseModel):
     submitted: int
     rejected: int
     approved: int
+
+
+# === 试卷相关 ===
+class PaperGenerateRequest(BaseModel):
+    question_ids: list[int] = Field(..., min_length=1, max_length=50)
+    count: int = Field(default=10, ge=8, le=12)
+
+
+class PaperResult(BaseModel):
+    summary: str
+    draft: str
+    polish_prompt: str
+    stats: dict
+    model: str
+
+
+class PaperJobResponse(BaseModel):
+    status: str  # pending | running | done | failed
+    result: Optional[PaperResult] = None
+    error: Optional[dict] = None

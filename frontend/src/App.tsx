@@ -21,6 +21,7 @@ import TemplateManagePage from './features/tasks/TemplateManagePage'
 import ParentNotebookPage from './features/tasks/ParentNotebookPage'
 import ParentSettingsPage from './features/tasks/ParentSettingsPage'
 import AchievementsPage from './features/tasks/AchievementsPage'
+import PaperDraftPage from './features/papers/PaperDraftPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="/questions" element={<QuestionListPage />} />
           <Route path="/questions/new" element={<QuestionNewPage />} />
           <Route path="/questions/:id" element={<QuestionDetailPage />} />
+          <Route path="/papers" element={<PaperDraftPage />} />
           <Route path="/statistics" element={<StatisticsPage />} />
           <Route path="/tasks" element={<StudentTaskPage />} />
           <Route path="/settings" element={<SettingsPage />} />

@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
+    # 本地 Ollama（试卷初稿生成）
+    OLLAMA_ENABLED: bool = True
+    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
+    OLLAMA_MODEL: str = "qwen2.5:7b"
+    OLLAMA_TIMEOUT_SECONDS: int = 300
+    PAPER_MIN_QUESTIONS: int = 8
+    PAPER_MAX_QUESTIONS: int = 12
+    PAPER_JOB_TTL_SECONDS: int = 3600  # 内存 job 保留 1 小时
+
     # 生产库（Mac mini 本地，仅内网）
     DB_PROD_HOST: str = "127.0.0.1"
     DB_PROD_PORT: int = 3306
