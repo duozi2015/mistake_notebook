@@ -35,6 +35,13 @@ async def lifespan(app: FastAPI):
     os.makedirs("uploads/temp", exist_ok=True)
     os.makedirs("uploads/questions", exist_ok=True)
     os.makedirs("uploads/tasks", exist_ok=True)
+    # 预热 PDF 中文字体（系统字体优先，缺失则自动下载），避免首次导出卡顿
+    try:
+        from app.services.pdf_font import ensure_cjk_font
+
+        ensure_cjk_font()
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("PDF 中文字体预热失败: %s", exc)
     yield
 
 
