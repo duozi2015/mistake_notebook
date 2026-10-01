@@ -30,6 +30,9 @@ backend/uploads/temp/*
 backend/uploads/questions/*
 backend/uploads/tasks/*
 
+# PDF 中文字体（自动下载兜底，不入库）
+backend/app/assets/fonts/
+
 # IDE
 .idea/
 .vscode/

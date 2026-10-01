@@ -89,6 +89,11 @@ def export_pdf(
         )
         from reportlab.lib import colors
 
+        from app.services.pdf_font import ensure_cjk_font
+
+        # 注册中文字体（系统字体优先，缺失则自动下载），避免中文渲染为方块
+        cjk_font = ensure_cjk_font()
+
         import io
 
         buf = io.BytesIO()
@@ -105,12 +110,14 @@ def export_pdf(
         title_style = ParagraphStyle(
             "CustomTitle",
             parent=styles["Title"],
+            fontName=cjk_font or styles["Title"].fontName,
             fontSize=18,
             spaceAfter=12,
         )
         heading_style = ParagraphStyle(
             "CustomHeading",
             parent=styles["Heading2"],
+            fontName=cjk_font or styles["Heading2"].fontName,
             fontSize=14,
             spaceAfter=6,
             spaceBefore=12,
@@ -119,6 +126,7 @@ def export_pdf(
         body_style = ParagraphStyle(
             "CustomBody",
             parent=styles["Normal"],
+            fontName=cjk_font or styles["Normal"].fontName,
             fontSize=10,
             leading=16,
             spaceAfter=6,
@@ -189,8 +197,11 @@ def export_pdf(
                 "Content-Disposition": f'attachment; filename="mistakes_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
             },
         )
-    except ImportError:
-        # reportlab 未安装，回退到纯文本
+    except Exception as exc:  # noqa: BLE001
+        # reportlab 未安装，或字体/构建失败 → 回退到纯文本
+        import logging
+
+        logging.getLogger(__name__).warning("PDF 生成失败，回退纯文本: %s", exc)
         return Response(
             content=content,
             media_type="text/plain; charset=utf-8",
