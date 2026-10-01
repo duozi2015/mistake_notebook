@@ -1,12 +1,14 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { questionApi } from '../../services/questions'
 import { exportApi } from '../../services/export'
+import { paperApi } from '../../services/papers'
 import { useToastStore } from '../../stores/toastStore'
 import type { Question } from '../../types'
 import ImageViewer from '../../components/Shared/ImageViewer'
 
 export default function QuestionListPage() {
+  const navigate = useNavigate()
   const addToast = useToastStore((s) => s.addToast)
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
@@ -15,6 +17,9 @@ export default function QuestionListPage() {
   const [subject, setSubject] = useState('')
   const [deleting, setDeleting] = useState<number | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [paperCount, setPaperCount] = useState(10)
+  const [generating, setGenerating] = useState(false)
   const [viewerState, setViewerState] = useState<{ images: { src: string }[]; index: number } | null>(null)
   const pageSize = 20
 
@@ -89,6 +94,38 @@ export default function QuestionListPage() {
     }
   }
 
+  /* ──────────────── 勾选 ──────────────── */
+  const toggleSelect = (id: number, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  /* ──────────────── 生成试卷 ──────────────── */
+  const handleGeneratePaper = async () => {
+    const ids = Array.from(selected)
+    if (ids.length === 0) {
+      addToast('请先勾选错题', 'error')
+      return
+    }
+    setGenerating(true)
+    try {
+      const { data } = await paperApi.generate(ids, paperCount)
+      sessionStorage.setItem('paper_job_id', data.job_id)
+      navigate('/papers')
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail?.message || '发起生成失败，请重试'
+      addToast(msg, 'error')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   return (
     <div className="pb-8">
       <div className="flex items-center justify-between mb-4">
@@ -124,9 +161,22 @@ export default function QuestionListPage() {
       ) : (
         <div className="space-y-3">
           {questions.map((q) => (
-            <div key={q.id} className="relative bg-white rounded-xl shadow-sm">
+            <div key={q.id} className={`relative bg-white rounded-xl shadow-sm ${selected.has(q.id) ? 'ring-2 ring-blue-500' : ''}`}>
               <Link to={`/questions/${q.id}`} className="block p-4">
                 <div className="flex gap-3">
+                  {/* 勾选圈 */}
+                  <button
+                    type="button"
+                    onClick={(e) => toggleSelect(q.id, e)}
+                    className={`flex-shrink-0 w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center text-[11px] transition-colors ${
+                      selected.has(q.id)
+                        ? 'bg-blue-600 border-blue-600 text-white'
+                        : 'border-gray-300 text-transparent'
+                    }`}
+                    aria-label="选择"
+                  >
+                    ✓
+                  </button>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between mb-1">
                       <span className="text-sm text-blue-600 font-medium">{q.subject || '未分类'}</span>
@@ -184,6 +234,40 @@ export default function QuestionListPage() {
       )}
       {viewerState && (
         <ImageViewer images={viewerState.images} initialIndex={viewerState.index} onClose={() => setViewerState(null)} />
+      )}
+
+      {/* 底部生成试卷栏（选中有题时才出现，浮在底部导航之上） */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-16 left-0 right-0 z-40 px-4">
+          <div className="max-w-lg mx-auto bg-white rounded-xl shadow-lg border border-gray-100 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-gray-600">
+                已选 <b className="text-blue-600">{selected.size}</b> 题
+              </span>
+              <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 px-2 min-h-[28px]">
+                清空
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={paperCount}
+                onChange={(e) => setPaperCount(Number(e.target.value))}
+                className="px-2 py-2 border border-gray-200 rounded-lg text-sm bg-white min-h-[40px]"
+              >
+                {[8, 9, 10, 11, 12].map((n) => (
+                  <option key={n} value={n}>{n} 题</option>
+                ))}
+              </select>
+              <button
+                onClick={handleGeneratePaper}
+                disabled={generating}
+                className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium active:bg-blue-700 disabled:opacity-50 min-h-[40px]"
+              >
+                {generating ? '发起中...' : '📝 生成试卷'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
