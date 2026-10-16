@@ -5,7 +5,7 @@ import { useToastStore } from '../../stores/toastStore'
 import { compressImage } from '../../utils/image'
 import ImageViewer from '../../components/Shared/ImageViewer'
 
-const ERROR_TYPES = ['概念不清', '审题错误', '计算失误', '知识遗忘', '其他']
+const ERROR_TYPES = ['概念不清', '审题错误', '计算失误', '知识遗忘', '词义混淆', '拼写错误', '其他']
 const SUBJECTS = ['数学', '物理', '化学', '英语', '语文', '其他']
 
 type SolutionMode = 'text' | 'image'

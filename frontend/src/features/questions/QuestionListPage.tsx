@@ -7,6 +7,8 @@ import { useToastStore } from '../../stores/toastStore'
 import type { Question } from '../../types'
 import ImageViewer from '../../components/Shared/ImageViewer'
 
+const ERROR_TYPES = ['', '概念不清', '审题错误', '计算失误', '知识遗忘', '词义混淆', '拼写错误', '其他']
+
 export default function QuestionListPage() {
   const navigate = useNavigate()
   const addToast = useToastStore((s) => s.addToast)
@@ -15,6 +17,7 @@ export default function QuestionListPage() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [subject, setSubject] = useState('')
+  const [errorType, setErrorType] = useState('')
   const [deleting, setDeleting] = useState<number | null>(null)
   const [exporting, setExporting] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -23,17 +26,17 @@ export default function QuestionListPage() {
   const [viewerState, setViewerState] = useState<{ images: { src: string }[]; index: number } | null>(null)
   const pageSize = 20
 
-  const load = useCallback(async (p: number, subj: string) => {
+  const load = useCallback(async (p: number, subj: string, etype: string) => {
     setLoading(true)
     setPage(p)
     try {
-      const { data } = await questionApi.list({ page: p, page_size: pageSize, subject: subj || undefined, status: 'active' })
+      const { data } = await questionApi.list({ page: p, page_size: pageSize, subject: subj || undefined, error_type: etype || undefined, status: 'active' })
       setQuestions(data.data)
       setTotal(data.pagination.total)
     } finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { load(1, subject) }, [subject, load])
+  useEffect(() => { load(1, subject, errorType) }, [subject, errorType, load])
 
   const handleDelete = async (q: Question, e: React.MouseEvent) => {
     e.preventDefault()
@@ -46,7 +49,7 @@ export default function QuestionListPage() {
       addToast('题目已删除', 'success')
       // 如果当前页只剩1条且不是第1页，回到上一页
       const isLastOnPage = questions.length === 1 && page > 1
-      load(isLastOnPage ? page - 1 : page, subject)
+      load(isLastOnPage ? page - 1 : page, subject, errorType)
     } catch {
       addToast('删除失败，请重试', 'error')
     } finally {
@@ -150,6 +153,15 @@ export default function QuestionListPage() {
         ))}
       </div>
 
+      {/* 错误类型筛选 */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+        {ERROR_TYPES.map((t) => (
+          <button key={t} onClick={() => setErrorType(t)}
+            className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap ${errorType === t ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+          >{t || '全部类型'}</button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />)}</div>
       ) : questions.length === 0 ? (
@@ -226,7 +238,7 @@ export default function QuestionListPage() {
       {totalPages > 1 && (
         <div className="flex justify-center gap-2 mt-4">
           {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => i + 1).map((p) => (
-            <button key={p} onClick={() => load(p, subject)}
+            <button key={p} onClick={() => load(p, subject, errorType)}
               className={`w-8 h-8 rounded-full text-sm ${page === p ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
             >{p}</button>
           ))}
