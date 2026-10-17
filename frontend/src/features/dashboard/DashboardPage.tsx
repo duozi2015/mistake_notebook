@@ -9,6 +9,9 @@ import CategoryTag from '../tasks/components/CategoryTag'
 import { STATUS_LABELS, statusRank } from '../tasks/constants'
 import type { Achievement, Question, TaskInstance } from '../../types'
 
+// 背单词应用入口（english-word-helper 同域部署，默认 /words/；dev 不同端口时用 VITE_WORD_APP_URL 覆盖）
+const WORD_APP_URL: string = (import.meta.env.VITE_WORD_APP_URL as string | undefined) ?? '/words/'
+
 type PageState = 'loading' | 'loaded' | 'error'
 
 export default function DashboardPage() {
@@ -102,8 +105,16 @@ export default function DashboardPage() {
     <div className="pb-6">
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-gray-800">你好，{user?.display_name || user?.username} 👋</h1>
-        <span className="text-sm text-gray-400">{todayStr}</span>
+        <h1 className="text-xl font-bold text-gray-800 truncate">你好，{user?.display_name || user?.username} 👋</h1>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <a
+            href={WORD_APP_URL}
+            className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-full text-sm font-medium active:bg-blue-100 min-h-[32px] flex items-center"
+          >
+            📚 背单词
+          </a>
+          <span className="text-sm text-gray-400">{todayStr}</span>
+        </div>
       </div>
 
       {/* ── 今日任务进度 ── */}
