@@ -45,9 +45,11 @@ def env(test_db, client):
     test_db.commit()
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
+    # 注意：MySQL DATETIME（秒精度）会把带微秒的 now 四舍五入进位，
+    # 若紧贴当前时刻，同一秒内查询可能判定"未到期"。回退 1 秒确保稳定"已到期"。
     due = Question(
         user_id=student.id, question_content="到期题", subject="数学",
-        status="active", next_review_date=now,
+        status="active", next_review_date=now - timedelta(seconds=1),
     )
     later = Question(
         user_id=student.id, question_content="未到期题", subject="语文",

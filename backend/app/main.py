@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.database import engine
 from app.config import settings
 from app.migrations import run_migrations
-from app.routers import auth, questions, images, reviews, ocr, variants, export, statistics, admin, family, tasks, achievements, papers
+from app.routers import auth, questions, images, reviews, ocr, variants, export, ima_backup, statistics, admin, family, tasks, achievements, papers
 
 
 def _setup_local_time_logging():
@@ -64,6 +64,7 @@ app.include_router(statistics.router)
 app.include_router(ocr.router)
 app.include_router(variants.router)
 app.include_router(export.router)
+app.include_router(ima_backup.router)
 app.include_router(admin.router)
 app.include_router(family.router)
 app.include_router(tasks.router)
