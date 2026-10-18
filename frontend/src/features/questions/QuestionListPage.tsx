@@ -8,6 +8,9 @@ import type { Question } from '../../types'
 import ImageViewer from '../../components/Shared/ImageViewer'
 
 const ERROR_TYPES = ['', '概念不清', '审题错误', '计算失误', '知识遗忘', '词义混淆', '拼写错误', '其他']
+const WORD_SOURCE = 'english-word-helper'
+
+type ListTab = 'mistakes' | 'words'
 
 export default function QuestionListPage() {
   const navigate = useNavigate()
@@ -18,6 +21,7 @@ export default function QuestionListPage() {
   const [total, setTotal] = useState(0)
   const [subject, setSubject] = useState('')
   const [errorType, setErrorType] = useState('')
+  const [tab, setTab] = useState<ListTab>('mistakes')
   const [deleting, setDeleting] = useState<number | null>(null)
   const [exporting, setExporting] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -26,17 +30,25 @@ export default function QuestionListPage() {
   const [viewerState, setViewerState] = useState<{ images: { src: string }[]; index: number } | null>(null)
   const pageSize = 20
 
-  const load = useCallback(async (p: number, subj: string, etype: string) => {
+  const load = useCallback(async (p: number, subj: string, etype: string, tb: ListTab) => {
     setLoading(true)
     setPage(p)
     try {
-      const { data } = await questionApi.list({ page: p, page_size: pageSize, subject: subj || undefined, error_type: etype || undefined, status: 'active' })
+      const { data } = await questionApi.list({
+        page: p,
+        page_size: pageSize,
+        subject: subj || undefined,
+        error_type: etype || undefined,
+        status: 'active',
+        // 单词错题归背单词应用调度，错题本 Tab 只做归档展示
+        ...(tb === 'words' ? { source: WORD_SOURCE } : { exclude_source: WORD_SOURCE }),
+      })
       setQuestions(data.data)
       setTotal(data.pagination.total)
     } finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { load(1, subject, errorType) }, [subject, errorType, load])
+  useEffect(() => { load(1, subject, errorType, tab) }, [subject, errorType, tab, load])
 
   const handleDelete = async (q: Question, e: React.MouseEvent) => {
     e.preventDefault()
@@ -49,7 +61,7 @@ export default function QuestionListPage() {
       addToast('题目已删除', 'success')
       // 如果当前页只剩1条且不是第1页，回到上一页
       const isLastOnPage = questions.length === 1 && page > 1
-      load(isLastOnPage ? page - 1 : page, subject, errorType)
+      load(isLastOnPage ? page - 1 : page, subject, errorType, tab)
     } catch {
       addToast('删除失败，请重试', 'error')
     } finally {
@@ -145,6 +157,17 @@ export default function QuestionListPage() {
         </div>
       </div>
 
+      {/* 错题 / 单词 Tab（单词错题由背单词应用调度复习，这里只归档展示） */}
+      <div className="flex gap-2 mb-3">
+        {([['mistakes', '📕 错题'], ['words', '🔤 单词']] as [ListTab, string][]).map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
+              tab === key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
+            }`}
+          >{label}</button>
+        ))}
+      </div>
+
       <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
         {['', '数学', '物理', '化学', '英语'].map((s) => (
           <button key={s} onClick={() => setSubject(s)}
@@ -166,11 +189,47 @@ export default function QuestionListPage() {
         <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />)}</div>
       ) : questions.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
-          <div className="text-4xl mb-3">📭</div>
-          <p>还没有错题</p>
-          <Link to="/questions/new" className="text-blue-600 mt-2 inline-block">录入第一道错题</Link>
+          <div className="text-4xl mb-3">{tab === 'words' ? '🔤' : '📭'}</div>
+          <p>{tab === 'words' ? '还没有单词错题' : '还没有错题'}</p>
+          {tab === 'mistakes' && (
+            <Link to="/questions/new" className="text-blue-600 mt-2 inline-block">录入第一道错题</Link>
+          )}
+          {tab === 'words' && (
+            <p className="text-xs text-gray-300 mt-2">背错的单词会由背单词应用自动收录到这里</p>
+          )}
+        </div>
+      ) : tab === 'words' ? (
+        /* ── 单词错题：简化卡片（词 + 正确答案 + 我的错答） ── */
+        <div className="space-y-3">
+          {questions.map((q) => (
+            <div key={q.id} className="relative bg-white rounded-xl shadow-sm">
+              <Link to={`/questions/${q.id}`} className="block p-4">
+                <div className="flex items-start justify-between mb-1.5">
+                  <span className="text-base font-bold text-gray-800">{q.question_content || '无题目内容'}</span>
+                  <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{new Date(q.created_at).toLocaleDateString()}</span>
+                </div>
+                <p className="text-sm text-green-700">✓ {q.correct_solution || '—'}</p>
+                {q.user_analysis && (
+                  <p className="text-xs text-red-500 mt-1">✗ 我答：{q.user_analysis}</p>
+                )}
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  {q.tags.map((t) => <span key={t} className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs">{t}</span>)}
+                  {q.error_type && <span className="px-2 py-0.5 bg-red-50 text-red-500 rounded text-xs">{q.error_type}</span>}
+                </div>
+              </Link>
+              <button
+                onClick={(e) => handleDelete(q, e)}
+                disabled={deleting === q.id}
+                className="absolute top-2 right-2 w-7 h-7 bg-gray-100 hover:bg-red-100 text-gray-400 hover:text-red-500 rounded-full flex items-center justify-center text-xs transition-colors disabled:opacity-50"
+                title="删除"
+              >
+                {deleting === q.id ? '...' : '✕'}
+              </button>
+            </div>
+          ))}
         </div>
       ) : (
+        /* ── 普通错题卡片 ── */
         <div className="space-y-3">
           {questions.map((q) => (
             <div key={q.id} className={`relative bg-white rounded-xl shadow-sm ${selected.has(q.id) ? 'ring-2 ring-blue-500' : ''}`}>
@@ -238,7 +297,7 @@ export default function QuestionListPage() {
       {totalPages > 1 && (
         <div className="flex justify-center gap-2 mt-4">
           {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => i + 1).map((p) => (
-            <button key={p} onClick={() => load(p, subject, errorType)}
+            <button key={p} onClick={() => load(p, subject, errorType, tab)}
               className={`w-8 h-8 rounded-full text-sm ${page === p ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
             >{p}</button>
           ))}

@@ -45,6 +45,7 @@ def env(test_db, client):
 
     yield {
         "client": client,
+        "student": student,
         "h": {"Authorization": f"Bearer {create_access_token(student)[0]}"},
     }
 
@@ -145,3 +146,91 @@ def test_word_question_isolated_by_user(env):
 
     resp = env["client"].get("/api/v1/questions", params={"status": "active"}, headers=other_h)
     assert resp.json()["pagination"]["total"] == 0
+
+
+# ── 复习调度分离：单词错题归背单词应用，错题本只归档 ───────────────────
+
+
+def _create_question(db: SessionLocal, user_id: int, **overrides) -> Question:
+    body = {
+        "user_id": user_id,
+        "subject": "英语",
+        "difficulty": 3,
+        "question_content": "hello — ______",
+        "correct_solution": "你好",
+        "status": "active",
+    }
+    body.update(overrides)
+    q = Question(**body)
+    db.add(q)
+    db.commit()
+    db.refresh(q)
+    return q
+
+
+def test_list_source_filter(env):
+    """列表按 source 精确过滤 / 排除过滤（前端 Tab 依赖）。"""
+    test_db = SessionLocal()
+    normal = _create_question(test_db, env["student"].id, subject="数学",
+                              question_content="1+1=?")
+    word = _create_question(test_db, env["student"].id,
+                            source="english-word-helper")
+    normal_id, word_id = normal.id, word.id
+    test_db.close()
+
+    only_words = env["client"].get(
+        "/api/v1/questions",
+        params={"source": "english-word-helper", "status": "active"},
+        headers=env["h"],
+    ).json()
+    assert only_words["pagination"]["total"] == 1
+    assert only_words["data"][0]["id"] == word_id
+
+    only_normal = env["client"].get(
+        "/api/v1/questions",
+        params={"exclude_source": "english-word-helper", "status": "active"},
+        headers=env["h"],
+    ).json()
+    assert only_normal["pagination"]["total"] == 1
+    assert only_normal["data"][0]["id"] == normal_id
+
+
+def test_daily_review_excludes_word_questions(env):
+    """复习队列不出现单词错题（它们的节奏归背单词应用）。"""
+    test_db = SessionLocal()
+    _create_question(test_db, env["student"].id, subject="数学",
+                     question_content="2+2=?")
+    _create_question(test_db, env["student"].id,
+                     source="english-word-helper")
+    test_db.close()
+
+    resp = env["client"].get("/api/v1/reviews/daily", headers=env["h"])
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["pagination"]["total"] == 1
+    assert data["data"][0]["source"] != "english-word-helper"
+
+
+def test_variants_exclude_word_questions(env):
+    """变式题候选不含单词错题。"""
+    from app.models import QuestionTag
+
+    test_db = SessionLocal()
+    base = _create_question(test_db, env["student"].id, subject="英语",
+                            question_content="take — ______")
+    candidate = _create_question(test_db, env["student"].id, subject="英语",
+                                 question_content="bring — ______")
+    word = _create_question(test_db, env["student"].id,
+                            source="english-word-helper")
+    for q in (base, candidate, word):
+        test_db.add(QuestionTag(question_id=q.id, tag_name="动词辨析"))
+    test_db.commit()
+    base_id, candidate_id, word_id = base.id, candidate.id, word.id
+    test_db.close()
+
+    resp = env["client"].get(f"/api/v1/variants/{base_id}", headers=env["h"])
+    assert resp.status_code == 200
+    data = resp.json()
+    ids = [q["id"] for q in data["data"]]
+    assert candidate_id in ids
+    assert word_id not in ids

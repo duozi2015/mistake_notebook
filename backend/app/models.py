@@ -15,6 +15,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from app.database import Base
 
+# english-word-helper（背单词应用）联动错题的来源标记。
+# 这些题的复习调度归背单词应用（SM-2 阶梯间隔），错题本只做归档展示。
+WORD_APP_SOURCE = "english-word-helper"
+
 
 def _utcnow():
     """返回不带时区的当前 UTC 时间（替代已弃用的 _utcnow）"""

@@ -422,7 +422,8 @@ export default function QuestionDetailPage() {
         )}
       </div>
 
-      {/* 变式题推荐 */}
+      {/* 变式题推荐（单词错题不提供，复习节奏归背单词应用） */}
+      {question.source !== 'english-word-helper' && (
       <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
         <button onClick={toggleVariants} className="flex items-center justify-between w-full text-left">
           <span className="font-medium text-gray-700">🔗 变式题推荐</span>
@@ -462,6 +463,7 @@ export default function QuestionDetailPage() {
           </div>
         )}
       </div>
+      )}
 
       <div className="text-xs text-gray-400 text-center mt-4">
         创建于 {new Date(question.created_at).toLocaleString()}
