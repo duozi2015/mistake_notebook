@@ -3,6 +3,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useToastStore } from '../../stores/toastStore'
 import { authApi } from '../../services/auth'
 import { familyApi } from '../../services/tasks'
+import { exportApi } from '../../services/export'
 import AdminPanel from './AdminPanel'
 
 function msgOf(err: unknown): string {
@@ -39,6 +40,41 @@ export default function SettingsPage() {
     familyApi.me().then((r) => setMyParents(r.data)).catch(() => {})
   }
   useEffect(() => { refreshFamily() }, [])
+
+  // ── ima 笔记备份 ──
+  const [imaExporting, setImaExporting] = useState(false)
+  const handleImaBackup = async () => {
+    setImaExporting(true)
+    try {
+      const response = await exportApi.imaBackupNotes()
+      const blob = response.data as Blob
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `ima_notes_${new Date().toISOString().slice(0, 10)}.zip`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      addToast('备份 ZIP 已开始下载', 'success')
+    } catch (err: any) {
+      // 当 responseType 为 blob 时，错误响应也是 Blob，需要尝试解析
+      let msg = '备份导出失败，请重试'
+      try {
+        const errorData = err?.response?.data
+        if (errorData instanceof Blob && errorData.type?.includes('json')) {
+          const text = await errorData.text()
+          const parsed = JSON.parse(text)
+          msg = parsed?.detail?.message || parsed?.message || msg
+        } else if (errorData?.detail?.message) {
+          msg = errorData.detail.message
+        }
+      } catch { /* ignore parse errors */ }
+      addToast(msg, 'error')
+    } finally {
+      setImaExporting(false)
+    }
+  }
 
   const handleConfirm = async (id: number) => {
     try {
@@ -359,6 +395,24 @@ export default function SettingsPage() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* ── ima 笔记备份 ── */}
+      <div className="bg-white rounded-xl p-5 shadow-sm mb-4">
+        <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
+          ima 笔记备份
+        </h2>
+        <p className="text-sm text-gray-500 leading-relaxed mb-3">
+          把每道错题导出为一个 PDF 笔记（含题目、答案、错因和原始图片），打包为 ZIP 后手动导入腾讯 ima 知识库。
+        </p>
+        <button
+          onClick={handleImaBackup}
+          disabled={imaExporting}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium active:bg-blue-700 disabled:opacity-40 min-h-[48px] transition-colors"
+        >
+          <span className="text-base">📦</span>
+          <span>{imaExporting ? '正在打包…' : '下载备份 ZIP'}</span>
+        </button>
       </div>
 
       {/* ── Admin section (仅管理员 doudou 可见) ── */}
