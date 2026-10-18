@@ -27,9 +27,6 @@ router = APIRouter(prefix="/api/v1/ima-backup", tags=["导出"])
 # file_path 形如 "/uploads/questions/xxx.jpg"，去掉首部 "/" 后拼到 backend 根目录
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
-# PDF 内图片最大宽度（保持纵横比）
-_MAX_IMAGE_WIDTH = 15 * 2.54 / 2.54 * 15  # 15cm，见下方 mm 换算
-
 
 def _safe_name(text: str, fallback: str) -> str:
     """把学科等字段转成适合文件名的形式（去路径分隔符等）。"""
