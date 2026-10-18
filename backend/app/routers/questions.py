@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
 from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User, Question, QuestionTag, QuestionImage
+from app.models import User, Question, QuestionTag, QuestionImage, WORD_APP_SOURCE
 from app.schemas import (
     QuestionCreate,
     QuestionUpdate,
@@ -68,17 +69,29 @@ def list_questions(
     sort_order: str = "desc",
     student_id: int | None = None,
     due: bool = False,
+    source: str = None,
+    exclude_source: str = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     user_id = resolve_student_id(db, current_user, student_id)
     query = db.query(Question).filter(Question.user_id == user_id)
     if due:
-        # 今日待复习清单（记忆曲线）
+        # 今日待复习清单（记忆曲线）；单词错题由背单词应用调度，不进本队列
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         query = query.filter(
             Question.status == "active",
             Question.next_review_date <= now,
+            or_(
+                Question.source.is_(None),
+                Question.source != WORD_APP_SOURCE,
+            ),
+        )
+    if source:
+        query = query.filter(Question.source == source)
+    if exclude_source:
+        query = query.filter(
+            or_(Question.source.is_(None), Question.source != exclude_source)
         )
     if subject:
         query = query.filter(Question.subject == subject)

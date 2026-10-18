@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, or_
 
 from app.database import get_db
-from app.models import User, Question, QuestionTag, Review
+from app.models import User, Question, QuestionTag, Review, WORD_APP_SOURCE
 from app.schemas import QuestionResponse, ImageResponse
 from app.auth import get_current_user
 
@@ -65,13 +65,17 @@ def get_variant_questions(
     if not tag_names:
         return {"data": [], "total": 0}
 
-    # 3. 查找有相同标签的其他题目
+    # 3. 查找有相同标签的其他题目（单词错题不参与变式推荐，归背单词应用）
     same_tag_questions = (
         db.query(Question)
         .filter(
             Question.id != question_id,
             Question.user_id == current_user.id,
             Question.status == "active",
+            or_(
+                Question.source.is_(None),
+                Question.source != WORD_APP_SOURCE,
+            ),
             Question.tags.any(QuestionTag.tag_name.in_(tag_names)),
         )
         .all()

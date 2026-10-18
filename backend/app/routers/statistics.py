@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta, timezone, date
 from typing import Sequence
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User, Question, QuestionTag, Review, QuestionImage
+from app.models import User, Question, QuestionTag, Review, QuestionImage, WORD_APP_SOURCE
 from app.auth import get_current_user, resolve_student_id
 
 router = APIRouter(prefix="/api/v1/statistics", tags=["统计"])
@@ -78,12 +78,17 @@ def get_overview(
     )
 
     # Overdue reviews (active questions with next_review_date <= today)
+    # 单词错题由背单词应用调度，不计入错题本待复习数
     overdue_review_count = (
         db.query(func.count(Question.id))
         .filter(
             Question.user_id == user_id,
             Question.status == "active",
             Question.next_review_date <= today_end,
+            or_(
+                Question.source.is_(None),
+                Question.source != WORD_APP_SOURCE,
+            ),
         )
         .scalar()
         or 0

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.database import get_db
-from app.models import User, Question, Review
+from app.models import User, Question, Review, WORD_APP_SOURCE
 from app.auth import get_current_user
 from app.services.sm2 import calculate_sm2
 
@@ -89,6 +89,11 @@ def get_daily_reviews(
         .filter(
             Question.user_id == current_user.id,
             Question.status == "active",
+            # 单词错题由背单词应用调度复习，不进错题本队列
+            or_(
+                Question.source.is_(None),
+                Question.source != WORD_APP_SOURCE,
+            ),
             or_(
                 Question.next_review_date == None,
                 Question.next_review_date <= datetime.combine(today, datetime.min.time()),
