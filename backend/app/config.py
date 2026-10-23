@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     APP_ENV: str = ""
     OCR_ENABLED: bool = False
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    PORT: int = 2531
 
     # 本地 Ollama（试卷初稿生成）
     OLLAMA_ENABLED: bool = True

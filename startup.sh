@@ -20,7 +20,7 @@ source venv/bin/activate
 if pgrep -f "uvicorn app.main" > /dev/null; then
     echo "后端已在运行" >> "$LOG_DIR/startup.log"
 else
-    nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > "$LOG_DIR/app.log" 2>&1 &
+    nohup uvicorn app.main:app --host 0.0.0.0 --port 2531 > "$LOG_DIR/app.log" 2>&1 &
     echo "后端已启动 (PID: $!) 环境: ${APP_ENV:-development}" >> "$LOG_DIR/startup.log"
 fi
 
