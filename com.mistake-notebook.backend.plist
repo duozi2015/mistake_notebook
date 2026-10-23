@@ -12,7 +12,7 @@
         <string>--host</string>
         <string>0.0.0.0</string>
         <string>--port</string>
-        <string>8000</string>
+        <string>2531</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/Users/doudou_files/claude/mistake_notebook/backend</string>

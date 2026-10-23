@@ -12,7 +12,7 @@ export $(grep -v '^#' .env 2>/dev/null | xargs)
 export DYLD_LIBRARY_PATH="/opt/homebrew/Cellar/expat/2.8.2/lib:$DYLD_LIBRARY_PATH"
 
 BACKUP_DIR="$PROJECT_DIR/backend/data/backups"
-HOST_PORT=8000
+HOST_PORT=2531
 
 echo "=== 0. 创建日志目录 ==="
 mkdir -p "$PROJECT_DIR/backend/logs"
