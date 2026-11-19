@@ -1,10 +1,30 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  AreaChart,
+  Area,
+} from 'recharts'
+import {
   statisticsApi,
   type Overview,
   type TrendItem,
   type ReportData,
-  type ErrorTypeItem,
+  type WeakTagItem,
   type MasteryItem,
   type HeatmapItem,
 } from '../../services/statistics'
@@ -14,6 +34,34 @@ import { CATEGORY_LABELS } from '../tasks/constants'
 import type { TaskInstance } from '../../types'
 
 type PageState = 'loading' | 'loaded' | 'error' | 'empty'
+
+const AXIS_TICK = { fontSize: 10, fill: '#9ca3af' } as const
+
+/* 图表配色（与页面既有色板一致） */
+const COLORS = {
+  added: '#60a5fa', // blue-400
+  reviewed: '#4ade80', // green-400
+  weak: '#fb923c', // orange-400
+  radar: '#a855f7', // purple-500
+  pie: ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6'],
+  bucket: ['#c4b5fd', '#60a5fa', '#fbbf24', '#34d399'],
+}
+
+function fmtDate(dateStr: string) {
+  const d = new Date(dateStr)
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+/* 统一 tooltip 样式 */
+const tooltipStyle = {
+  contentStyle: {
+    borderRadius: 10,
+    border: '1px solid #e5e7eb',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+    fontSize: 12,
+    padding: '6px 10px',
+  },
+} as const
 
 export default function StatisticsPage() {
   const [pageState, setPageState] = useState<PageState>('loading')
@@ -82,33 +130,61 @@ export default function StatisticsPage() {
 
   /* ──────────── Trend chart data ──────────── */
   const chartData = useMemo(() => {
-    if (trends.length === 0) return { data: [], maxValue: 0 }
+    if (trends.length === 0) return []
 
     // Show last 30 days of data
     const sorted = [...trends].sort((a, b) => a.date.localeCompare(b.date))
-    const sliced = sorted.slice(-30)
-
-    const maxValue = Math.max(
-      ...sliced.map((d) => Math.max(d.added, d.reviewed)),
-      1,
-    )
-
-    return { data: sliced, maxValue }
+    return sorted.slice(-30)
   }, [trends])
 
-  /* ──────────── Weakest tag for suggestions ──────────── */
-  const weakestTag = useMemo(() => {
-    if (mastery.length === 0) return null
-    return [...mastery].sort((a, b) => b.error_count - a.error_count)[0]
-  }, [mastery])
+  /* ──────────── 热力图数据：按天聚合 + 按时段聚合 ──────────── */
+  const heatmapByDate = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const it of heatmapData) m[it.date] = (m[it.date] ?? 0) + it.count
+    return m
+  }, [heatmapData])
 
-  const errorTypeDistribution: ErrorTypeItem[] = report?.error_type_distribution ?? []
+  const heatmapBuckets = useMemo(() => {
+    const buckets = [
+      { label: '凌晨 0-5点', count: 0 },
+      { label: '上午 6-11点', count: 0 },
+      { label: '下午 12-17点', count: 0 },
+      { label: '晚上 18-23点', count: 0 },
+    ]
+    for (const it of heatmapData) {
+      buckets[Math.floor(it.hour / 6)].count += it.count
+    }
+    return buckets
+  }, [heatmapData])
 
-  /* ──────────── Format date for display ──────────── */
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr)
-    return `${d.getMonth() + 1}/${d.getDate()}`
-  }
+  /* ──────────── 薄弱知识点：统一按错误率排序（后端 top_weak_tags 已按率排，前端兜底同口径） ──────────── */
+  const weakTags: WeakTagItem[] = useMemo(() => {
+    const fromReport = report?.top_weak_tags ?? []
+    if (fromReport.length > 0) return fromReport
+    // report 接口失败时用 mastery 数据按错误率兜底推导
+    return [...mastery]
+      .map((m) => ({
+        tag: m.tag,
+        error_count: m.error_count,
+        total_count: m.total_count,
+        error_rate: m.total_count > 0 ? Math.round((m.error_count / m.total_count) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.error_rate - a.error_rate)
+      .slice(0, 5)
+  }, [report, mastery])
+
+  /* ──────────── 雷达图数据（掌握度前 6 个知识点） ──────────── */
+  const radarData = useMemo(
+    () =>
+      [...mastery]
+        .sort((a, b) => a.mastery - b.mastery)
+        .slice(0, 6)
+        .map((m) => ({
+          tag: m.tag.length > 6 ? `${m.tag.slice(0, 6)}…` : m.tag,
+          掌握度: Math.round(m.mastery * 100),
+        })),
+    [mastery],
+  )
 
   /* ──────────── 任务统计聚合 ──────────── */
   const taskStats = useMemo(() => {
@@ -129,7 +205,6 @@ export default function StatisticsPage() {
     const withTime = approved.filter((t) => t.estimated_minutes != null && t.actual_minutes != null)
     const avgEst = withTime.length ? Math.round(withTime.reduce((s, t) => s + (t.estimated_minutes ?? 0), 0) / withTime.length) : 0
     const avgAct = withTime.length ? Math.round(withTime.reduce((s, t) => s + (t.actual_minutes ?? 0), 0) / withTime.length) : 0
-    const maxTrend = Math.max(...trend.map((x) => x.count), 1)
     // 今日各状态计数（从 history 派生，避免额外请求）
     const today = toLocalDateStr(new Date())
     const todayStats = { total: 0, pending: 0, submitted: 0, rejected: 0, approved: 0 }
@@ -140,7 +215,7 @@ export default function StatisticsPage() {
         todayStats[t.status] += 1
       }
     }
-    return { approvedCount: approved.length, byCat, trend, maxTrend, avgEst, avgAct, timeTasks: withTime.length, today: todayStats }
+    return { approvedCount: approved.length, byCat, trend, avgEst, avgAct, timeTasks: withTime.length, today: todayStats }
   }, [taskHistory])
 
   /* ──────────── Empty state check ──────────── */
@@ -153,8 +228,8 @@ export default function StatisticsPage() {
         {/* Header skeleton */}
         <div className="h-7 w-48 bg-gray-200 rounded animate-pulse mb-6" />
         {/* Stat cards skeleton */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          {Array.from({ length: 3 }).map((_, i) => (
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="bg-white rounded-xl p-4 shadow-sm">
               <div className="h-3 w-12 bg-gray-200 rounded animate-pulse mb-2" />
               <div className="h-7 w-16 bg-gray-200 rounded animate-pulse" />
@@ -166,12 +241,10 @@ export default function StatisticsPage() {
           <div className="h-4 w-32 bg-gray-200 rounded animate-pulse mb-4" />
           <div className="h-40 bg-gray-100 rounded-xl animate-pulse" />
         </div>
-        {/* Error distribution skeleton */}
+        {/* Heatmap skeleton */}
         <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
           <div className="h-4 w-28 bg-gray-200 rounded animate-pulse mb-4" />
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-4 bg-gray-100 rounded-full animate-pulse mb-3 last:mb-0" />
-          ))}
+          <div className="h-32 bg-gray-100 rounded-xl animate-pulse" />
         </div>
         {/* Weak tags skeleton */}
         <div className="bg-white rounded-xl p-4 shadow-sm">
@@ -270,10 +343,43 @@ export default function StatisticsPage() {
         })}
       </div>
 
-      {/* 近14天完成趋势（折线图） */}
+      {/* 近14天完成趋势（面积图） */}
       <div className="bg-white rounded-xl p-4 shadow-sm mb-3">
         <h3 className="text-xs font-bold text-gray-500 mb-2">近14天完成任务趋势</h3>
-        <TrendLine data={taskStats.trend} maxValue={taskStats.maxTrend} />
+        <ResponsiveContainer width="100%" height={140}>
+          <AreaChart data={taskStats.trend} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id="taskTrendFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <XAxis
+              dataKey="date"
+              tickFormatter={fmtDate}
+              minTickGap={30}
+              tick={AXIS_TICK}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis allowDecimals={false} width={22} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+            <Tooltip
+              {...tooltipStyle}
+              labelFormatter={(v) => `📅 ${v}`}
+              formatter={(value) => [`${value} 个`, '完成任务']}
+            />
+            <Area
+              type="monotone"
+              dataKey="count"
+              name="完成任务"
+              stroke="#22c55e"
+              strokeWidth={2}
+              fill="url(#taskTrendFill)"
+              dot={false}
+              activeDot={{ r: 4 }}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
       </div>
 
       {/* 预计 vs 实际耗时 */}
@@ -307,211 +413,189 @@ export default function StatisticsPage() {
       )}
 
       {/* ── Stat cards ── */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="bg-white rounded-xl p-4 shadow-sm">
+      <div className="grid grid-cols-4 gap-2 mb-6">
+        <div className="bg-white rounded-xl p-4 shadow-sm text-center">
           <div className="text-xs text-gray-500 mb-1">总题数</div>
           <div className="text-xl font-bold text-blue-600">{overview?.total_questions ?? 0}</div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm">
+        <div className="bg-white rounded-xl p-4 shadow-sm text-center">
           <div className="text-xs text-gray-500 mb-1">待复习</div>
           <div className="text-xl font-bold text-orange-600">
             {(overview?.overdue_review_count ?? 0) + (overview?.today_review_count ?? 0)}
           </div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm">
+        <div className="bg-white rounded-xl p-4 shadow-sm text-center">
           <div className="text-xs text-gray-500 mb-1">掌握度</div>
           <div className="text-xl font-bold text-purple-600">{overview?.mastery_rate ?? 0}%</div>
         </div>
+        <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+          <div className="text-xs text-gray-500 mb-1">完成率</div>
+          <div className="text-xl font-bold text-green-600">{report?.review_completion_rate ?? 0}%</div>
+        </div>
       </div>
 
-      {/* ── Trend chart ── */}
-      {chartData.data.length > 0 && (
+      {/* ── 错题趋势（分组柱状图） ── */}
+      {chartData.length > 0 && (
         <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
           <h2 className="text-sm font-bold text-gray-800 mb-3">错题趋势（近30天）</h2>
-
-          {/* Legend */}
-          <div className="flex items-center gap-4 mb-4">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-sm bg-blue-400" />
-              <span className="text-xs text-gray-500">新增</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-sm bg-green-400" />
-              <span className="text-xs text-gray-500">复习</span>
-            </div>
-          </div>
-
-          {/* Chart area */}
-          <div className="relative">
-            <div className="flex items-end gap-[2px] h-44" style={{ minHeight: '176px' }}>
-              {chartData.data.map((item, idx) => {
-                const addedHeight = (item.added / chartData.maxValue) * 120
-                const reviewedHeight = (item.reviewed / chartData.maxValue) * 120
-                const showLabel =
-                  idx === 0 ||
-                  idx === chartData.data.length - 1 ||
-                  item.date.endsWith('-01') ||
-                  (idx > 0 && chartData.data.length > 10 && idx % Math.ceil(chartData.data.length / 5) === 0)
-
-                return (
-                  <div key={item.date} className="flex-1 flex flex-col items-center justify-end h-full">
-                    {/* Bars */}
-                    <div className="flex items-end gap-[1px] w-full max-w-[12px]">
-                      <div
-                        className="w-1/2 bg-blue-400 rounded-t-sm transition-all duration-500"
-                        style={{ height: `${Math.max(addedHeight, 1)}px` }}
-                      />
-                      <div
-                        className="w-1/2 bg-green-400 rounded-t-sm transition-all duration-500"
-                        style={{ height: `${Math.max(reviewedHeight, 1)}px` }}
-                      />
-                    </div>
-                    {/* Date label */}
-                    {showLabel && (
-                      <span className="text-[10px] text-gray-400 mt-1 whitespace-nowrap">
-                        {formatDate(item.date)}
-                      </span>
-                    )}
-                    {!showLabel && <div className="h-4" />}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barGap={1}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+              <XAxis
+                dataKey="date"
+                tickFormatter={fmtDate}
+                minTickGap={26}
+                tick={AXIS_TICK}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis allowDecimals={false} width={22} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+              <Tooltip
+                {...tooltipStyle}
+                cursor={{ fill: 'rgba(59,130,246,0.06)' }}
+                labelFormatter={(v) => `📅 ${v}`}
+              />
+              <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="added" name="新增" fill={COLORS.added} radius={[2, 2, 0, 0]} maxBarSize={10} />
+              <Bar dataKey="reviewed" name="复习" fill={COLORS.reviewed} radius={[2, 2, 0, 0]} maxBarSize={10} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       )}
 
-      {/* ── Study heatmap ── */}
+      {/* ── 学习热力图（日历热力图 + 时段分布） ── */}
       {heatmapData.length > 0 && (
         <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
           <h2 className="text-sm font-bold text-gray-800 mb-3">学习热力图（近30天）</h2>
-          {(() => {
-            // Build a day-of-week × hour grid
-            const dayNames = ['日', '一', '二', '三', '四', '五', '六']
-            const hourGroups = [
-              { label: '凌晨', hours: [0, 1, 2, 3, 4, 5] },
-              { label: '上午', hours: [6, 7, 8, 9, 10, 11] },
-              { label: '下午', hours: [12, 13, 14, 15, 16, 17] },
-              { label: '晚上', hours: [18, 19, 20, 21, 22, 23] },
-            ]
-            // Aggregate by day of week and hour group
-            const grid: Record<string, Record<string, number>> = {}
-            for (const d of dayNames) grid[d] = { '凌晨': 0, '上午': 0, '下午': 0, '晚上': 0 }
-            let maxCount = 0
-            for (const item of heatmapData) {
-              const date = new Date(item.date)
-              const dayName = dayNames[date.getDay()]
-              for (const g of hourGroups) {
-                if (g.hours.includes(item.hour)) {
-                  grid[dayName][g.label] += item.count
-                  maxCount = Math.max(maxCount, grid[dayName][g.label])
-                }
-              }
-            }
-            const getIntensity = (count: number) => {
-              if (count === 0) return 'bg-gray-50'
-              const ratio = count / (maxCount || 1)
-              if (ratio > 0.75) return 'bg-green-500'
-              if (ratio > 0.5) return 'bg-green-400'
-              if (ratio > 0.25) return 'bg-green-300'
-              return 'bg-green-200'
-            }
-            return (
-              <div>
-                <div className="flex items-center gap-1 text-xs text-gray-400 mb-2">
-                  <span className="w-5" />
-                  {hourGroups.map((g) => <span key={g.label} className="flex-1 text-center">{g.label}</span>)}
-                </div>
-                {dayNames.map((day) => (
-                  <div key={day} className="flex items-center gap-1 mb-1">
-                    <span className="w-5 text-xs text-gray-400 text-right">{day}</span>
-                    {hourGroups.map((g) => (
-                      <div
-                        key={g.label}
-                        className={`flex-1 h-8 rounded-md ${getIntensity(grid[day][g.label])} flex items-center justify-center`}
-                        title={`周${day} ${g.label}: ${grid[day][g.label]}次`}
-                      >
-                        {grid[day][g.label] > 0 && (
-                          <span className="text-[10px] font-medium text-white">{grid[day][g.label]}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+          <CalendarHeatmap byDate={heatmapByDate} />
+          <h3 className="text-xs font-bold text-gray-500 mt-4 mb-1">时段分布</h3>
+          <ResponsiveContainer width="100%" height={150}>
+            <BarChart data={heatmapBuckets} layout="vertical" margin={{ top: 4, right: 16, bottom: 0, left: 0 }}>
+              <XAxis type="number" hide allowDecimals={false} />
+              <YAxis
+                type="category"
+                dataKey="label"
+                width={92}
+                tick={{ fontSize: 11, fill: '#6b7280' }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip {...tooltipStyle} cursor={{ fill: 'rgba(59,130,246,0.06)' }} formatter={(value) => [`${value} 次`, '学习频次']} />
+              <Bar dataKey="count" name="学习频次" radius={[0, 6, 6, 0]} maxBarSize={16}>
+                {heatmapBuckets.map((_, i) => (
+                  <Cell key={i} fill={COLORS.bucket[i]} />
                 ))}
-              </div>
-            )
-          })()}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       )}
 
-      {/* ── Error reason distribution ── */}
-      {errorTypeDistribution.length > 0 && (
+      {/* ── 错误原因分布（环形图） ── */}
+      {(report?.top_error_types?.length ?? 0) > 0 && (
         <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
           <h2 className="text-sm font-bold text-gray-800 mb-3">错误原因分布</h2>
-          <div className="space-y-3">
-            {errorTypeDistribution.map((item) => (
-              <div key={item.type}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm text-gray-700">{item.type}</span>
-                  <span className="text-xs text-gray-500">{Math.round(item.percentage)}%</span>
-                </div>
-                <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-400 to-blue-500 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(item.percentage, 100)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Weak knowledge points ── */}
-      {mastery.length > 0 && (
-        <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
-          <h2 className="text-sm font-bold text-gray-800 mb-3">薄弱知识点</h2>
-          <div className="space-y-3">
-            {[...mastery]
-              .sort((a, b) => b.error_count - a.error_count)
-              .slice(0, 5)
-              .map((item, index) => (
-                <div key={item.tag} className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400 w-5 text-right">{index + 1}.</span>
-                  <span className="text-sm text-gray-700 flex-1 truncate">{item.tag}</span>
-                  <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden max-w-[120px]">
-                    <div
-                      className="h-full bg-orange-400 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(item.error_count / Math.max(item.total_count, 1) * 100, 100)}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-500 w-10 text-right">
-                    {item.total_count > 0
-                      ? `${Math.round((item.error_count / item.total_count) * 100)}%`
-                      : '0%'}
-                  </span>
-                  <span className="text-xs text-orange-500">📈</span>
+          <div className="flex items-center gap-2">
+            <ResponsiveContainer width="55%" height={180}>
+              <PieChart>
+                <Pie
+                  data={report!.top_error_types}
+                  dataKey="percentage"
+                  nameKey="type"
+                  innerRadius={42}
+                  outerRadius={68}
+                  paddingAngle={2}
+                  strokeWidth={0}
+                >
+                  {report!.top_error_types.map((_, i) => (
+                    <Cell key={i} fill={COLORS.pie[i % COLORS.pie.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  {...tooltipStyle}
+                  formatter={(value, name, payload) => [
+                    `${value}%（${(payload?.payload as { count: number }).count} 题）`,
+                    String(name),
+                  ]}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex-1 space-y-2">
+              {report!.top_error_types.map((item, i) => (
+                <div key={item.type} className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS.pie[i % COLORS.pie.length] }} />
+                  <span className="text-xs text-gray-700 flex-1 truncate">{item.type}</span>
+                  <span className="text-xs font-medium text-gray-500">{Math.round(item.percentage)}%</span>
                 </div>
               ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── Learning suggestions ── */}
-      {weakestTag && (
-        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-4 border border-amber-200">
-          <h2 className="text-sm font-bold text-gray-800 mb-2">⚠️ 学情建议</h2>
-          <p className="text-sm text-gray-700 mb-2">
-            <strong className="text-orange-600">{weakestTag.tag}</strong> 板块错误率高达{' '}
-            {weakestTag.total_count > 0
-              ? `${Math.round((weakestTag.error_count / weakestTag.total_count) * 100)}%`
-              : '较高'}
-            ，建议重点复习。
-          </p>
-          <ul className="text-sm text-gray-600 space-y-1 ml-4 list-disc">
-            <li>回顾 {weakestTag.tag} 的基础概念和公式</li>
-            <li>多做相关练习题，巩固理解</li>
-            <li>整理错题，分析错误原因</li>
+      {/* ── 薄弱知识点（按错误率横向条形图） ── */}
+      {weakTags.length > 0 && (
+        <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
+          <h2 className="text-sm font-bold text-gray-800 mb-1">薄弱知识点</h2>
+          <p className="text-[11px] text-gray-400 mb-2">按错误率排序（低掌握题数 / 该知识点总题数）</p>
+          <ResponsiveContainer width="100%" height={weakTags.length * 40 + 24}>
+            <BarChart data={weakTags} layout="vertical" margin={{ top: 4, right: 24, bottom: 0, left: 0 }}>
+              <XAxis
+                type="number"
+                domain={[0, 100]}
+                tickFormatter={(v) => `${v}%`}
+                tick={AXIS_TICK}
+                axisLine={false}
+                tickLine={false}
+                allowDecimals={false}
+              />
+              <YAxis
+                type="category"
+                dataKey="tag"
+                width={98}
+                tick={{ fontSize: 11, fill: '#374151' }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip
+                {...tooltipStyle}
+                cursor={{ fill: 'rgba(251,146,60,0.08)' }}
+                formatter={(value, _name, payload) => {
+                  const p = payload?.payload as WeakTagItem
+                  const total = p?.total_count ?? p?.error_count ?? '?'
+                  return [`${value}%（${p?.error_count ?? '?'}/${total} 题）`, '错误率']
+                }}
+              />
+              <Bar dataKey="error_rate" name="错误率" fill={COLORS.weak} radius={[0, 4, 4, 0]} maxBarSize={14} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* ── 知识掌握度雷达图 ── */}
+      {radarData.length >= 3 && (
+        <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
+          <h2 className="text-sm font-bold text-gray-800 mb-3">知识掌握度</h2>
+          <ResponsiveContainer width="100%" height={240}>
+            <RadarChart data={radarData} margin={{ top: 8, right: 16, bottom: 0, left: 16 }}>
+              <PolarGrid stroke="#e5e7eb" />
+              <PolarAngleAxis dataKey="tag" tick={{ fontSize: 11, fill: '#6b7280' }} />
+              <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 9, fill: '#d1d5db' }} axisLine={false} />
+              <Radar dataKey="掌握度" stroke={COLORS.radar} fill={COLORS.radar} fillOpacity={0.3} strokeWidth={2} />
+              <Tooltip {...tooltipStyle} formatter={(value) => [`${value}%`, '掌握度']} />
+            </RadarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* ── 学情建议 ── */}
+      {(report?.suggestions?.length ?? 0) > 0 && (
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-4 border border-amber-200 mb-4">
+          <h2 className="text-sm font-bold text-gray-800 mb-2">💡 学情建议</h2>
+          <ul className="text-sm text-gray-600 space-y-1.5 ml-4 list-disc">
+            {report!.suggestions.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
           </ul>
         </div>
       )}
@@ -519,49 +603,85 @@ export default function StatisticsPage() {
   )
 }
 
-/** 简单折线图：完成任务趋势（内联 SVG，含渐变面积与数据点） */
-function TrendLine({ data, maxValue }: { data: { date: string; count: number }[]; maxValue: number }) {
-  const W = 320
-  const H = 120
-  const PAD = 10
-  const n = data.length
-  if (n === 0) return <div className="h-24 text-center text-xs text-gray-400 pt-8">暂无数据</div>
+/** 日历热力图：近30天按天着色（GitHub 贡献图风格，纯 SVG 绘制） */
+function CalendarHeatmap({ byDate }: { byDate: Record<string, number> }) {
+  const CELL = 15
+  const GAP = 3
+  const LABEL_W = 20
 
-  const max = Math.max(maxValue, 1)
-  const stepX = n > 1 ? (W - PAD * 2) / (n - 1) : 0
-  const pts = data.map((d, i) => ({
-    x: PAD + i * stepX,
-    y: H - PAD - (d.count / max) * (H - PAD * 2),
-    count: d.count,
-    date: d.date,
-  }))
-  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-  const area = `${line} L${pts[n - 1].x.toFixed(1)},${H - PAD} L${pts[0].x.toFixed(1)},${H - PAD} Z`
+  const cells = useMemo(() => {
+    const today = new Date()
+    const list: { date: string; count: number; weekday: number }[] = []
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(today.getDate() - i)
+      const key = toLocalDateStr(d)
+      list.push({ date: key, count: byDate[key] ?? 0, weekday: d.getDay() })
+    }
+    return list
+  }, [byDate])
 
-  const labelAt = (i: number) => data[i]?.date.slice(5) ?? ''
+  const maxCount = Math.max(...cells.map((c) => c.count), 1)
+  const leadBlanks = cells[0]?.weekday ?? 0
+  const columns = Math.ceil((leadBlanks + cells.length) / 7)
+  const W = LABEL_W + columns * (CELL + GAP)
+  const H = 7 * (CELL + GAP)
+  // 稀疏行标签（周一/周四/周日），避免拥挤
+  const WEEK_ROWS: [number, string][] = [[1, '一'], [4, '四'], [6, '日']]
+
+  const getColor = (count: number) => {
+    if (count === 0) return '#f3f4f6'
+    const ratio = count / maxCount
+    if (ratio > 0.75) return '#16a34a'
+    if (ratio > 0.5) return '#4ade80'
+    if (ratio > 0.25) return '#86efac'
+    return '#dcfce7'
+  }
 
   return (
     <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
-        <defs>
-          <linearGradient id="trendArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path d={area} fill="url(#trendArea)" />
-        <path d={line} fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        {pts.map((p, i) => (
-          <g key={i}>
-            <circle cx={p.x} cy={p.y} r="3" fill="#fff" stroke="#22c55e" strokeWidth="2" />
-            <title>{`${p.date}: ${p.count}`}</title>
-          </g>
+      <svg viewBox={`0 0 ${W} ${H + 6}`} className="w-full" style={{ maxWidth: W * 2 }}>
+        {/* 星期行标签 */}
+        {WEEK_ROWS.map(([row, label]) => (
+          <text
+            key={row}
+            x={LABEL_W - 4}
+            y={row * (CELL + GAP) + CELL / 2 + 3}
+            textAnchor="end"
+            fontSize="9"
+            fill="#9ca3af"
+          >
+            {label}
+          </text>
         ))}
+        {cells.map((c, i) => {
+          const slot = leadBlanks + i
+          const col = Math.floor(slot / 7)
+          const row = slot % 7
+          return (
+            <g key={c.date}>
+              <rect
+                x={LABEL_W + col * (CELL + GAP)}
+                y={row * (CELL + GAP)}
+                width={CELL}
+                height={CELL}
+                rx={4}
+                fill={getColor(c.count)}
+              />
+              <title>{`📅 ${c.date}：学习 ${c.count} 次`}</title>
+            </g>
+          )
+        })}
       </svg>
-      <div className="flex justify-between text-[10px] text-gray-400 mt-1 px-1">
-        <span>{labelAt(0)}</span>
-        <span>{labelAt(Math.floor(n / 2))}</span>
-        <span>{labelAt(n - 1)}</span>
+      {/* 图例 */}
+      <div className="flex items-center justify-end gap-1 mt-1.5 text-[10px] text-gray-400">
+        <span>少</span>
+        <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#f3f4f6' }} />
+        <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#dcfce7' }} />
+        <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#86efac' }} />
+        <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#4ade80' }} />
+        <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#16a34a' }} />
+        <span>多</span>
       </div>
     </div>
   )

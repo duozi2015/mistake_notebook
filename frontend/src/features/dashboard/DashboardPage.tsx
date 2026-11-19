@@ -72,8 +72,8 @@ export default function DashboardPage() {
     () => selectedSubject ? reviewQuestions.filter((q) => q.subject === selectedSubject) : reviewQuestions,
     [reviewQuestions, selectedSubject],
   )
-  const highFrequencyTags: WeakTagItem[] = report?.high_frequency_tags ?? []
-  const errorTypeDistribution: ErrorTypeItem[] = report?.error_type_distribution ?? []
+  const highFrequencyTags: WeakTagItem[] = report?.top_weak_tags ?? []
+  const errorTypeDistribution: ErrorTypeItem[] = report?.top_error_types ?? []
 
   /* ──────────── Loading skeleton ──────────── */
   if (pageState === 'loading') {

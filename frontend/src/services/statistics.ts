@@ -26,6 +26,7 @@ export interface ErrorTypeItem {
 export interface WeakTagItem {
   tag: string
   error_count: number
+  total_count?: number
   error_rate: number
 }
 
@@ -43,9 +44,13 @@ export interface HeatmapItem {
 }
 
 export interface ReportData {
-  error_type_distribution: ErrorTypeItem[]
-  high_frequency_tags: WeakTagItem[]
-  [key: string]: unknown
+  period: 'weekly' | 'monthly'
+  total_questions: number
+  new_questions: number
+  review_completion_rate: number
+  top_error_types: ErrorTypeItem[]
+  top_weak_tags: WeakTagItem[]
+  suggestions: string[]
 }
 
 export const statisticsApi = {

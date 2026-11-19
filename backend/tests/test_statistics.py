@@ -439,3 +439,139 @@ class TestHeatmap:
             assert isinstance(entry["hour"], int)
             assert isinstance(entry["count"], int)
             assert 0 <= entry["hour"] <= 23
+
+# ── Regression tests: heatmap timezone / weak-tag ordering / report contract ──
+
+
+class TestHeatmapTimezone:
+    """热力图必须按本地时区聚合，而不是 DB 里的 naive UTC。"""
+
+    def test_heatmap_uses_local_hour(self, client, test_db):
+        user = User(username="tz_heatmap", password_hash="x", display_name="TZ")
+        test_db.add(user)
+        test_db.commit()
+        test_db.refresh(user)
+        # 题目创建时间放在 40 天前，避免落入 30 天热力图窗口
+        q = Question(
+            user_id=user.id,
+            question_content="tz question",
+            subject="数学",
+            status="active",
+            current_ef=2.5,
+            current_rep_count=1,
+            created_at=datetime.utcnow() - timedelta(days=40),
+            next_review_date=None,
+        )
+        test_db.add(q)
+        test_db.commit()
+
+        # 现在（UTC）复习一次
+        utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
+        test_db.add(Review(question_id=q.id, user_id=user.id, quality=4, review_date=utc_now))
+        test_db.commit()
+
+        resp = client.get("/api/v1/statistics/knowledge/heatmap", headers={"Authorization": "Bearer " + create_access_token(user)[0]})
+        assert resp.status_code == status.HTTP_200_OK
+        entries = resp.json()["data"]
+
+        local_now = utc_now.replace(tzinfo=timezone.utc).astimezone()
+        expected_key = (local_now.date().isoformat(), local_now.hour)
+        utc_key = (utc_now.date().isoformat(), utc_now.hour)
+
+        matched = [(e["date"], e["hour"]) for e in entries if e["date"] == expected_key[0] and e["hour"] == expected_key[1]]
+        assert matched, f"本地桶 {expected_key} 不在热力图里，实际 {entries}"
+        assert sum(e["count"] for e in entries if (e["date"], e["hour"]) == expected_key) >= 1
+
+        # 若 UTC 桶与本地桶不同，UTC 桶不应出现该记录（排除同刻巧合）
+        if expected_key != utc_key:
+            assert not any(e["date"] == utc_key[0] and e["hour"] == utc_key[1] and e["count"] == 1 for e in entries)
+
+    def test_heatmap_excludes_archived_questions(self, client, test_db):
+        user = User(username="tz_arch", password_hash="x", display_name="Arch")
+        test_db.add(user)
+        test_db.commit()
+        test_db.refresh(user)
+        q_archived = Question(
+            user_id=user.id,
+            question_content="archived question",
+            subject="数学",
+            status="archived",
+            current_ef=2.5,
+            current_rep_count=1,
+            created_at=datetime.utcnow() - timedelta(days=40),
+        )
+        test_db.add(q_archived)
+        test_db.commit()
+        test_db.add(Review(question_id=q_archived.id, user_id=user.id, quality=4, review_date=datetime.utcnow()))
+        test_db.commit()
+
+        resp = client.get("/api/v1/statistics/knowledge/heatmap", headers={"Authorization": "Bearer " + create_access_token(user)[0]})
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.json()["data"] == []
+
+
+class TestWeakTagsOrdering:
+    """薄弱知识点必须按错误率（而非绝对错误数）排序。"""
+
+    def test_report_weak_tags_sorted_by_rate(self, client, test_db):
+        user = User(username="weak_order", password_hash="x", display_name="Weak")
+        test_db.add(user)
+        test_db.commit()
+        test_db.refresh(user)
+
+        # 标签「难题」：2 题全错（100%）；标签「熟题」：10 题错 1（10%）
+        def mk(content, ef):
+            return Question(user_id=user.id, question_content=content, subject="数学",
+                            status="active", current_ef=ef, current_rep_count=1,
+                            created_at=datetime.utcnow() - timedelta(days=1))
+
+        hard_qs = [mk(f"hard{i}", 1.5) for i in range(2)]
+        easy_qs = [mk(f"easy{i}", 2.8) for i in range(10)]
+        easy_qs[0].current_ef = 1.5  # 10 题中错 1 题
+        for q in hard_qs + easy_qs:
+            test_db.add(q)
+        test_db.commit()
+        for q in hard_qs:
+            test_db.add(QuestionTag(question_id=q.id, tag_name="难题"))
+        for q in easy_qs:
+            test_db.add(QuestionTag(question_id=q.id, tag_name="熟题"))
+        test_db.commit()
+
+        resp = client.get("/api/v1/statistics/report?period=weekly", headers={"Authorization": "Bearer " + create_access_token(user)[0]})
+        assert resp.status_code == status.HTTP_200_OK
+        body = resp.json()
+        tags = {t["tag"]: t for t in body["top_weak_tags"]}
+
+        assert tags["难题"]["error_rate"] == 100.0
+        assert tags["难题"]["total_count"] == 2
+        assert tags["熟题"]["error_rate"] == 10.0
+        # 排序：错误率降序
+        rates = [t["error_rate"] for t in body["top_weak_tags"]]
+        assert rates == sorted(rates, reverse=True)
+
+    def test_report_contract_fields(self, client, auth_headers, seed_data):
+        resp = client.get("/api/v1/statistics/report?period=weekly", headers=auth_headers)
+        assert resp.status_code == status.HTTP_200_OK
+        body = resp.json()
+        for key in ("period", "total_questions", "new_questions", "review_completion_rate",
+                    "top_error_types", "top_weak_tags", "suggestions"):
+            assert key in body, f"report 契约缺少字段 {key}"
+
+    def test_report_suggestions_nonempty(self, client, test_db):
+        user = User(username="weak_sugg", password_hash="x", display_name="Sugg")
+        test_db.add(user)
+        test_db.commit()
+        test_db.refresh(user)
+        q = Question(user_id=user.id, question_content="sugg q", subject="数学",
+                     status="active", current_ef=1.5, current_rep_count=1,
+                     created_at=datetime.utcnow() - timedelta(days=1))
+        test_db.add(q)
+        test_db.commit()
+        test_db.add(QuestionTag(question_id=q.id, tag_name="二次函数"))
+        test_db.commit()
+
+        resp = client.get("/api/v1/statistics/report?period=weekly", headers={"Authorization": "Bearer " + create_access_token(user)[0]})
+        body = resp.json()
+        assert isinstance(body["suggestions"], list)
+        assert len(body["suggestions"]) > 0
+        assert any("二次函数" in s for s in body["suggestions"])

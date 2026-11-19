@@ -5,7 +5,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User, Question, QuestionTag, Review, QuestionImage, WORD_APP_SOURCE
+from app.models import User, Question, Review, WORD_APP_SOURCE
 from app.auth import get_current_user, resolve_student_id
 
 router = APIRouter(prefix="/api/v1/statistics", tags=["统计"])
@@ -78,13 +78,17 @@ def get_overview(
     )
 
     # Overdue reviews (active questions with next_review_date <= today)
+    # next_review_date 为 NULL 的新题与 /reviews/daily 口径一致，也算待复习
     # 单词错题由背单词应用调度，不计入错题本待复习数
     overdue_review_count = (
         db.query(func.count(Question.id))
         .filter(
             Question.user_id == user_id,
             Question.status == "active",
-            Question.next_review_date <= today_end,
+            or_(
+                Question.next_review_date.is_(None),
+                Question.next_review_date <= today_end,
+            ),
             or_(
                 Question.source.is_(None),
                 Question.source != WORD_APP_SOURCE,
@@ -105,10 +109,15 @@ def get_overview(
         or 0
     )
 
-    # Mastery rate: average of all active questions' EF mapped to 0-1
+    # Mastery rate: average of reviewed active questions' EF mapped to 0-1
+    # 只统计复习过（rep_count > 0）的题：从未复习的新题 EF 是默认值，计入会虚增掌握度
     avg_ef = (
         db.query(func.avg(Question.current_ef))
-        .filter(Question.user_id == user_id, Question.status == "active")
+        .filter(
+            Question.user_id == user_id,
+            Question.status == "active",
+            Question.current_rep_count > 0,
+        )
         .scalar()
     )
     mastery_rate = round(_ef_to_mastery(avg_ef) * 100, 1) if avg_ef else 0.0
@@ -144,49 +153,35 @@ def get_trends(
 ):
     user_id = resolve_student_id(db, current_user, student_id)
     thirty_days_ago = _now() - timedelta(days=29)
-    thirty_days_ago_date = thirty_days_ago.date()
+    thirty_days_ago_date = _utc_to_local(_now()).date() - timedelta(days=29)
 
-    # Questions added per day (grouped by date)
+    # Questions added per day (grouped by local date，SQL 取 UTC 日期后按本地时区归桶)
     added_rows = (
-        db.query(
-            func.date(Question.created_at).label("date"),
-            func.count(Question.id).label("cnt"),
-        )
+        db.query(Question.created_at)
         .filter(
             Question.user_id == user_id,
             Question.created_at >= thirty_days_ago,
         )
-        .group_by(func.date(Question.created_at))
         .all()
     )
-    added_map = {}
+    added_map: dict[date, int] = {}
     for row in added_rows:
-        try:
-            d = date.fromisoformat(row.date) if isinstance(row.date, str) else row.date
-        except (ValueError, TypeError):
-            d = row.date
-        added_map[d] = row.cnt
+        d = _utc_to_local(row.created_at).date()
+        added_map[d] = added_map.get(d, 0) + 1
 
-    # Reviews completed per day (grouped by date)
+    # Reviews completed per day (grouped by local date)
     review_rows = (
-        db.query(
-            func.date(Review.review_date).label("date"),
-            func.count(Review.id).label("cnt"),
-        )
+        db.query(Review.review_date)
         .filter(
             Review.user_id == user_id,
             Review.review_date >= thirty_days_ago,
         )
-        .group_by(func.date(Review.review_date))
         .all()
     )
-    review_map = {}
+    review_map: dict[date, int] = {}
     for row in review_rows:
-        try:
-            d = date.fromisoformat(row.date) if isinstance(row.date, str) else row.date
-        except (ValueError, TypeError):
-            d = row.date
-        review_map[d] = row.cnt
+        d = _utc_to_local(row.review_date).date()
+        review_map[d] = review_map.get(d, 0) + 1
 
     # Build 30-day series
     daily = []
@@ -240,7 +235,9 @@ def get_report(
         or 0
     )
 
-    # Review completion rate: reviews done / total reviews scheduled in period
+    # Review completion rate: period 内完成次数 / (完成次数 + 截至当前仍逾期的活跃题数)
+    # 旧口径（当前 next_review_date 落在窗口内）会漏掉已复习的题、漏掉 NULL 排期，
+    # 且单题多次复习可 >100%；新口径任何情况下都在 0~100%。
     reviews_done = (
         db.query(func.count(Review.id))
         .filter(
@@ -250,19 +247,24 @@ def get_report(
         .scalar()
         or 0
     )
-    # Scheduled reviews in period: count of active questions whose next_review_date
-    # fell within the period (including those that were overdue before it)
-    reviews_scheduled = (
+    still_overdue = (
         db.query(func.count(Question.id))
         .filter(
             Question.user_id == user_id,
             Question.status == "active",
-            Question.next_review_date <= now,
-            Question.next_review_date >= period_start - timedelta(days=1),
+            or_(
+                Question.next_review_date.is_(None),
+                Question.next_review_date <= now,
+            ),
+            or_(
+                Question.source.is_(None),
+                Question.source != WORD_APP_SOURCE,
+            ),
         )
         .scalar()
         or 0
     )
+    reviews_scheduled = reviews_done + still_overdue
     review_completion_rate = (
         round(reviews_done / reviews_scheduled * 100, 1) if reviews_scheduled > 0 else 0.0
     )
@@ -291,50 +293,12 @@ def get_report(
         )
 
     # Top weak tags: tags with highest error rate (non-perfect questions)
-    # We define "error" as a question where current_ef < 2.5 (i.e., below default)
-    # Or where the question has been reviewed with low quality
-    # More practical: find tags with high error_count / total_count ratio
-    # Count questions per tag
-    tag_question_counts = (
-        db.query(
-            QuestionTag.tag_name,
-            func.count(func.distinct(QuestionTag.question_id)).label("total_count"),
-        )
-        .join(Question, QuestionTag.question_id == Question.id)
-        .filter(
-            Question.user_id == user_id,
-            Question.status == "active",
-        )
-        .group_by(QuestionTag.tag_name)
-        .all()
-    )
-
-    # Count "error" questions per tag (current_ef < 2.5 or rep_count == 0)
-    tag_error_counts = (
-        db.query(
-            QuestionTag.tag_name,
-            func.count(func.distinct(QuestionTag.question_id)).label("error_count"),
-        )
-        .join(Question, QuestionTag.tag_name == QuestionTag.tag_name)
-        .filter(
-            Question.user_id == user_id,
-            Question.status == "active",
-            Question.current_ef < 2.5,
-        )
-        .group_by(QuestionTag.tag_name)
-        .all()
-    )
-    # The above query is wrong — it cross-joins rather than matching on question_id.
-    # Let me compute it properly in Python instead.
-
-    # Build tag stats in Python
+    # "error" 定义为 current_ef < 2.5（低于默认值，说明复习反馈不佳）。
+    # 全部在 Python 内按 question 聚合（tag 总数与错误数同源，口径一致）。
     from collections import defaultdict
 
-    tag_totals: dict[str, int] = {}
-    tag_errors: dict[str, int] = {}
-
-    for row in tag_question_counts:
-        tag_totals[row.tag_name] = row.total_count
+    tag_totals: dict[str, int] = defaultdict(int)
+    tag_errors: dict[str, int] = defaultdict(int)
 
     # Query all active questions with their tags and EF for the user
     from sqlalchemy.orm import joinedload
@@ -352,8 +316,9 @@ def get_report(
     for q in questions_with_tags:
         is_error = q.current_ef < 2.5
         for t in q.tags:
+            tag_totals[t.tag_name] += 1
             if is_error:
-                tag_errors[t.tag_name] = tag_errors.get(t.tag_name, 0) + 1
+                tag_errors[t.tag_name] += 1
 
     # Build sorted list of weak tags
     tag_weak_list = []
@@ -364,23 +329,35 @@ def get_report(
             {
                 "tag": tag_name,
                 "error_count": error_count,
+                "total_count": total_count,
                 "error_rate": error_rate,
             }
         )
     tag_weak_list.sort(key=lambda x: x["error_rate"], reverse=True)
     top_weak_tags = tag_weak_list[:5]
 
-    # Generate suggestions
+    # Generate rule-based suggestions（AI 学情建议的兜底文案）
     suggestions = []
-    for wt in top_weak_tags:
-        if wt["error_rate"] >= 50:
-            suggestions.append(
-                f"您近期在「{wt['tag']}」板块错误率高达 {wt['error_rate']}%，建议重点复习相关公式"
-            )
-    if not suggestions and top_weak_tags:
+    if top_weak_tags:
+        wt = top_weak_tags[0]
         suggestions.append(
-            f"继续保持！您最近的复习表现良好。"
+            f"您在「{wt['tag']}」板块错误率最高（{wt['error_rate']}%，{wt['error_count']}/{wt['total_count']} 题），建议优先复习该知识点的基础概念与易错点"
         )
+        for wt2 in top_weak_tags[1:3]:
+            if wt2["error_rate"] >= 50:
+                suggestions.append(
+                    f"「{wt2['tag']}」错误率 {wt2['error_rate']}%，同样需要重点关注"
+                )
+        if review_completion_rate < 60:
+            suggestions.append(
+                f"近{7 if period == 'weekly' else 30}天复习完成率 {review_completion_rate}%，建议每天固定时间复习，先清掉逾期题目"
+            )
+        if new_questions >= 5:
+            suggestions.append(
+                f"本期新增 {new_questions} 道错题，注意及时整理错误原因，避免同类错误重复出现"
+            )
+    else:
+        suggestions.append("继续保持！您最近的复习表现良好。")
 
     return {
         "period": period,
@@ -451,6 +428,15 @@ def get_knowledge_mastery(
 # ── Heatmap (last 30 days, by hour) ────────────────────────────────
 
 
+def _utc_to_local(dt: datetime) -> datetime:
+    """把 DB 里存的 naive UTC 时间转换为服务器本地时区的 naive 时间。
+
+    统计类接口（热力图/趋势）面向「用户当地的学习时段」，
+    必须先转本地时区再按 date/hour 聚合，否则 UTC+8 用户全天偏移 8 小时。
+    """
+    return dt.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
+
+
 @router.get("/knowledge/heatmap")
 def get_heatmap(
     db: Session = Depends(get_db),
@@ -460,34 +446,40 @@ def get_heatmap(
     user_id = resolve_student_id(db, current_user, student_id)
     thirty_days_ago = _now() - timedelta(days=29)
 
+    # 复习记录（关联活跃题，排除已归档题的复习）
     reviews = (
         db.query(Review.review_date)
+        .join(Question, Review.question_id == Question.id)
         .filter(
             Review.user_id == user_id,
             Review.review_date >= thirty_days_ago,
+            Question.status == "active",
         )
         .all()
     )
 
-    # Aggregate by date + hour
+    # Aggregate by local date + hour
     from collections import defaultdict
 
     heatmap_data: dict[tuple[str, int], int] = defaultdict(int)
     for r in reviews:
-        key = (r.review_date.date().isoformat(), r.review_date.hour)
+        local_dt = _utc_to_local(r.review_date)
+        key = (local_dt.date().isoformat(), local_dt.hour)
         heatmap_data[key] += 1
 
-    # Also add questions created per date + hour
+    # Also add questions created per local date + hour（仅活跃题）
     questions = (
         db.query(Question.created_at)
         .filter(
             Question.user_id == user_id,
+            Question.status == "active",
             Question.created_at >= thirty_days_ago,
         )
         .all()
     )
     for q in questions:
-        key = (q.created_at.date().isoformat(), q.created_at.hour)
+        local_dt = _utc_to_local(q.created_at)
+        key = (local_dt.date().isoformat(), local_dt.hour)
         heatmap_data[key] += 1
 
     data = [

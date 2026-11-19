@@ -2,8 +2,11 @@
 
 - 开发/生产库：mistake_test / mistake_prod —— pytest 不触碰。
 - mistake_autotest 为 pytest 专用，可随意建表/清表；会话开始先清空一次保证干净。
+- MySQL 不可达时（如 Mac mini 离线）自动降级为本地临时 SQLite，保证测试随时可跑。
 """
 import os
+import socket
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -29,10 +32,24 @@ DB_NAME = _load_env("DB_AUTOTEST_NAME", "mistake_autotest")
 DB_USER = _load_env("DB_AUTOTEST_USER", "mistake_autotest")
 DB_PASS = _load_env("DB_AUTOTEST_PASSWORD", "")
 
-# 让 app 连接专用自动化测试库
-os.environ["DATABASE_URL"] = (
-    f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-)
+
+def _mysql_reachable(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=2):
+            return True
+    except OSError:
+        return False
+
+
+if _mysql_reachable(DB_HOST, DB_PORT):
+    # 让 app 连接专用自动化测试库
+    os.environ["DATABASE_URL"] = (
+        f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    )
+else:
+    # 兜底：MySQL 不可达时用临时 SQLite（每次 pytest 会话独立）
+    _sqlite_path = Path(tempfile.mkdtemp(prefix="mistake_autotest_")) / "autotest.db"
+    os.environ["DATABASE_URL"] = f"sqlite:///{_sqlite_path}"
 
 
 @pytest.fixture(scope="session", autouse=True)
