@@ -488,3 +488,31 @@ def get_heatmap(
     ]
 
     return {"data": data}
+
+# ── AI 学情建议 ────────────────────────────────────────────────────
+
+
+@router.get("/ai-suggestions")
+def get_ai_suggestions(
+    db: Session = Depends(get_db),
+    student_id: int | None = None,
+    force: bool = False,
+    current_user: User = Depends(get_current_user),
+):
+    """AI 生成学情建议；未配置或调用失败时降级为规则建议（source 字段标识来源）。"""
+    from app.services import ai_suggestion_service as svc
+
+    user_id = resolve_student_id(db, current_user, student_id)
+    result = svc.generate_ai_suggestions(db, user_id, force=force)
+
+    if result.source != "ai":
+        ctx = svc.build_stats_context(db, user_id)
+        result.suggestions = svc.rule_based_suggestions(ctx)
+
+    return {
+        "source": result.source,
+        "model": result.model,
+        "suggestions": result.suggestions,
+        "elapsed_ms": result.elapsed_ms,
+        "cached": result.cached,
+    }

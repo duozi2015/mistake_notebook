@@ -27,6 +27,7 @@ import {
   type WeakTagItem,
   type MasteryItem,
   type HeatmapItem,
+  type AiSuggestionsData,
 } from '../../services/statistics'
 import { tasksApi } from '../../services/tasks'
 import { toLocalDateStr } from '../../utils/format'
@@ -71,6 +72,8 @@ export default function StatisticsPage() {
   const [mastery, setMastery] = useState<MasteryItem[]>([])
   const [heatmapData, setHeatmapData] = useState<HeatmapItem[]>([])
   const [taskHistory, setTaskHistory] = useState<TaskInstance[]>([])
+  const [aiSugg, setAiSugg] = useState<AiSuggestionsData | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
 
   const fetchData = useCallback(async () => {
     setPageState('loading')
@@ -121,6 +124,23 @@ export default function StatisticsPage() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  /* ──────────── AI 学情建议 ──────────── */
+  const loadAiSuggestions = useCallback(async (force = false) => {
+    setAiLoading(true)
+    try {
+      const res = await statisticsApi.aiSuggestions(force)
+      setAiSugg(res.data)
+    } catch {
+      setAiSugg(null) // 失败时回退展示 report.suggestions
+    } finally {
+      setAiLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadAiSuggestions()
+  }, [loadAiSuggestions])
 
   /* ──────────── Current month label ──────────── */
   const currentMonthLabel = useMemo(() => {
@@ -580,7 +600,7 @@ export default function StatisticsPage() {
             <RadarChart data={radarData} margin={{ top: 8, right: 16, bottom: 0, left: 16 }}>
               <PolarGrid stroke="#e5e7eb" />
               <PolarAngleAxis dataKey="tag" tick={{ fontSize: 11, fill: '#6b7280' }} />
-              <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 9, fill: '#d1d5db' }} axisLine={false} />
+              <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
               <Radar dataKey="掌握度" stroke={COLORS.radar} fill={COLORS.radar} fillOpacity={0.3} strokeWidth={2} />
               <Tooltip {...tooltipStyle} formatter={(value) => [`${value}%`, '掌握度']} />
             </RadarChart>
@@ -588,15 +608,48 @@ export default function StatisticsPage() {
         </div>
       )}
 
-      {/* ── 学情建议 ── */}
-      {(report?.suggestions?.length ?? 0) > 0 && (
+      {/* ── 学情建议（本地 AI 生成，失败降级为规则建议） ── */}
+      {(aiLoading || (aiSugg?.suggestions?.length ?? 0) > 0 || (report?.suggestions?.length ?? 0) > 0) && (
         <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-4 border border-amber-200 mb-4">
-          <h2 className="text-sm font-bold text-gray-800 mb-2">💡 学情建议</h2>
-          <ul className="text-sm text-gray-600 space-y-1.5 ml-4 list-disc">
-            {report!.suggestions.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ul>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-bold text-gray-800">💡 学情建议</h2>
+            <div className="flex items-center gap-1.5">
+              {aiSugg?.source === 'ai' && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600 font-medium">
+                  🤖 AI 生成
+                </span>
+              )}
+              <button
+                onClick={() => loadAiSuggestions(true)}
+                disabled={aiLoading}
+                className="w-7 h-7 flex items-center justify-center rounded-full bg-white/70 text-gray-500 active:bg-white text-sm disabled:opacity-40"
+                title="重新生成"
+              >
+                {aiLoading ? '⏳' : '↻'}
+              </button>
+            </div>
+          </div>
+
+          {aiLoading && !aiSugg ? (
+            <div className="space-y-2" aria-label="AI 分析中">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-4 bg-amber-100 rounded animate-pulse" style={{ width: `${92 - i * 14}%` }} />
+              ))}
+              <p className="text-[11px] text-gray-400 pt-1">🤖 本地 AI 正在分析学情…</p>
+            </div>
+          ) : (
+            <ul className="text-sm text-gray-600 space-y-1.5 ml-4 list-disc">
+              {(aiSugg?.suggestions?.length ? aiSugg.suggestions : report?.suggestions ?? []).map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
+          )}
+
+          {aiSugg?.source === 'ai' && !aiLoading && (
+            <p className="text-[10px] text-gray-400 mt-2">
+              由本地模型 {aiSugg.model} 生成（耗时 {(aiSugg.elapsed_ms / 1000).toFixed(1)}s{aiSugg.cached ? '，缓存' : ''}），仅供参考
+            </p>
+          )}
         </div>
       )}
     </div>

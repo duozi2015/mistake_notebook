@@ -4,6 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 定位仓库根目录的 .env（config.py 位于 backend/app/，上溯三级到仓库根）
 _ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
+# 本机私有覆盖文件（不入库，放 API KEY 等敏感配置），优先级高于 .env
+_LOCAL_ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env.local"
 
 
 class Settings(BaseSettings):
@@ -28,6 +30,15 @@ class Settings(BaseSettings):
     PAPER_MAX_QUESTIONS: int = 12
     PAPER_JOB_TTL_SECONDS: int = 3600  # 内存 job 保留 1 小时
 
+    # AI 学情建议（本地 LLM 网关，OpenAI 兼容 /v1/chat/completions）
+    # 密钥等敏感配置放仓库根目录 .env.local（gitignore，模板见 .env.local.example）
+    AI_SUGGEST_ENABLED: bool = True
+    AI_BASE_URL: str = ""
+    AI_MODEL: str = ""
+    AI_API_KEY: str = ""
+    AI_TIMEOUT_SECONDS: int = 90
+    AI_SUGGEST_CACHE_SECONDS: int = 3600  # 每用户建议缓存 1 小时
+
     # 生产库（Mac mini 本地，仅内网）
     DB_PROD_HOST: str = "127.0.0.1"
     DB_PROD_PORT: int = 3306
@@ -47,7 +58,10 @@ class Settings(BaseSettings):
     DB_AUTOTEST_USER: str = "mistake_autotest"
     DB_AUTOTEST_PASSWORD: str = ""
 
-    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=(str(_ENV_FILE), str(_LOCAL_ENV_FILE)),  # 后者优先：.env.local 覆盖 .env
+        env_file_encoding="utf-8",
+    )
 
     def env_mode(self) -> str:
         """production / development：优先 APP_ENV，否则按主机名推断（含 'macbook' 视为开发机）。"""
