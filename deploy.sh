@@ -69,7 +69,7 @@ else
 fi
 
 echo "=== 1. 构建前端 ==="
-cd frontend
+cd "$PROJECT_DIR/frontend"
 npm install --silent
 npm run build
 cd "$PROJECT_DIR"
